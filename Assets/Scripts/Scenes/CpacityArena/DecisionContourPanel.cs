@@ -1,13 +1,13 @@
 ﻿using UnityEngine;
 
 /// Draws a thin p≈0.5 decision contour behind the points using marching squares.
-/// Attach this to a world GameObject with a SpriteRenderer (named e.g. "DecisionContour").
+/// Attach to a world GameObject with a SpriteRenderer (e.g., "DecisionContour").
 /// Call Configure(...) once (bounds), then Redraw(mlp) whenever the model updates.
 public class DecisionContourPanel : MonoBehaviour
 {
     [Header("World bounds (in world units)")]
-    public Vector2 worldMin = new(-1f, -1f);
-    public Vector2 worldMax = new(1f, 1f);
+    public Vector2 worldMin = new Vector2(-1f, -1f);
+    public Vector2 worldMax = new Vector2(1f, 1f);
 
     [Header("Rendering")]
     [Range(48, 256)] public int resolution = 128;                 // grid samples per axis
@@ -37,13 +37,11 @@ public class DecisionContourPanel : MonoBehaviour
             var sp = Sprite.Create(tex, new Rect(0, 0, w, h), new Vector2(0.5f, 0.5f), pxPerUnit);
             sr.sprite = sp;
         }
-        // fit the sprite to the world bounds by choosing pixels-per-unit
         float widthU = Mathf.Max(1e-6f, worldMax.x - worldMin.x);
         pxPerUnit = tex.width / widthU;
-        // re-create sprite to apply new ppu
         var s = Sprite.Create(tex, new Rect(0, 0, tex.width, tex.height), new Vector2(0.5f, 0.5f), pxPerUnit);
         sr.sprite = s;
-        // position and scale
+
         Vector2 c = 0.5f * (worldMin + worldMax);
         transform.position = new Vector3(c.x, c.y, 0f);
         transform.localScale = Vector3.one; // PPU handles size
@@ -59,10 +57,9 @@ public class DecisionContourPanel : MonoBehaviour
 
     public void Redraw(MLP_Capacity mlp)
     {
-        if (mlp == null || tex == null) return;
+        if (mlp == null || tex == null) return;   // explicit null check (no !mlp)
         ClearTex();
 
-        // Sample probabilities on a grid in one batch
         int W = tex.width, H = tex.height;
         float[,] X = new float[W * H, 2];
         int k = 0;
@@ -75,16 +72,14 @@ public class DecisionContourPanel : MonoBehaviour
                 X[k, 0] = wx; X[k, 1] = wy; k++;
             }
         }
-        var preds = mlp.Forward(X, null, train: false).pred; // N×1
+        var preds = mlp.Forward(X, null, train: false).pred;
 
-        // Convert to 2D scalar field
         float[,] F = new float[W, H];
         k = 0;
         for (int y = 0; y < H; y++)
             for (int x = 0; x < W; x++, k++)
                 F[x, y] = preds[k, 0];
 
-        // Draw isocontours
         DrawIso(F, 0.50f, mainLine, lineThickness);
         DrawIso(F, 0.25f, auxLine, 1);
         DrawIso(F, 0.75f, auxLine, 1);
@@ -92,7 +87,6 @@ public class DecisionContourPanel : MonoBehaviour
         tex.Apply(false);
     }
 
-    // -------- marching squares + simple raster lines --------
     void DrawIso(float[,] F, float level, Color c, int thick)
     {
         int W = F.GetLength(0), H = F.GetLength(1);
@@ -112,7 +106,6 @@ public class DecisionContourPanel : MonoBehaviour
 
                 Vector2 a, b;
 
-                // interpolate edge points
                 Vector2 eL = new Vector2(x, y + T(level, f00, f01));
                 Vector2 eR = new Vector2(x + 1, y + T(level, f10, f11));
                 Vector2 eB = new Vector2(x + T(level, f00, f10), y);
@@ -124,7 +117,7 @@ public class DecisionContourPanel : MonoBehaviour
                     case 2: case 13: a = eR; b = eB; break;
                     case 3: case 12: a = eR; b = eL; break;
                     case 4: case 11: a = eT; b = eR; break;
-                    case 5: a = eB; b = eT; DrawLine(eL, eR, c, thick); break; // saddle: two segments
+                    case 5: a = eB; b = eT; DrawLine(eL, eR, c, thick); break;
                     case 6: case 9: a = eT; b = eB; break;
                     case 7: case 8: a = eL; b = eT; break;
                     case 10: a = eL; b = eR; break;
@@ -144,7 +137,6 @@ public class DecisionContourPanel : MonoBehaviour
 
     void DrawLine(Vector2 a, Vector2 b, Color col, int thick)
     {
-        // Bresenham in texture space
         int x0 = Mathf.RoundToInt(a.x), y0 = Mathf.RoundToInt(a.y);
         int x1 = Mathf.RoundToInt(b.x), y1 = Mathf.RoundToInt(b.y);
         int dx = Mathf.Abs(x1 - x0), dy = Mathf.Abs(y1 - y0);
@@ -176,7 +168,7 @@ public class DecisionContourPanel : MonoBehaviour
     void ClearTex()
     {
         int W = tex.width, H = tex.height;
-        var bg = new Color32(0, 0, 0, 0); // transparent
+        var bg = new Color32(0, 0, 0, 0);
         var arr = new Color32[W * H];
         for (int i = 0; i < arr.Length; i++) arr[i] = bg;
         tex.SetPixels32(arr);
