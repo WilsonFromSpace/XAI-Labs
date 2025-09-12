@@ -5321,7 +5321,7 @@ MonoBehaviour:
   gradNeg: {r: 0.35, g: 0.55, b: 0.95, a: 1}
   showWeights: 1
   showBiases: 1
-  fontSize: 14
+  fontSize: 16
 --- !u!114 &2020696900
 MonoBehaviour:
   m_ObjectHideFlags: 0
