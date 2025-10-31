@@ -11,7 +11,7 @@ public class DecisionContourPanel : MonoBehaviour
 
     [Header("Rendering")]
     [Range(48, 256)] public int resolution = 128;                 // grid samples per axis
-    [Range(1, 3)] public int lineThickness = 2;
+    [Range(0, 3)] public int lineThickness = 2;
     public Color mainLine = Color.white;                           // p=0.5
     public Color auxLine = new Color(1f, 1f, 1f, 0.25f);             // p=0.25 / 0.75 (optional)
 
