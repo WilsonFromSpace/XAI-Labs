@@ -267,6 +267,7 @@ GameObject:
   - component: {fileID: 45211515}
   - component: {fileID: 45211514}
   - component: {fileID: 45211513}
+  - component: {fileID: 45211516}
   m_Layer: 5
   m_Name: BackButton
   m_TagString: Untagged
@@ -388,6 +389,20 @@ CanvasRenderer:
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 45211511}
   m_CullTransparentMesh: 1
+--- !u!114 &45211516
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 45211511}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: f55f9971b4faaca4bb0e884ab432c81f, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  hoverClip: {fileID: 8300000, guid: 10500dc1756238c4e88b936dcffd3936, type: 3}
+  clickClip: {fileID: 8300000, guid: 00fd3b0eff5058a4a8cce5853d08ca78, type: 3}
 --- !u!1 &67513341
 GameObject:
   m_ObjectHideFlags: 0
@@ -506,6 +521,7 @@ GameObject:
   - component: {fileID: 70277160}
   - component: {fileID: 70277159}
   - component: {fileID: 70277161}
+  - component: {fileID: 70277162}
   m_Layer: 5
   m_Name: BtnRespawn
   m_TagString: Untagged
@@ -615,6 +631,20 @@ MonoBehaviour:
   m_OnClick:
     m_PersistentCalls:
       m_Calls: []
+--- !u!114 &70277162
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 70277157}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: f55f9971b4faaca4bb0e884ab432c81f, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  hoverClip: {fileID: 8300000, guid: 10500dc1756238c4e88b936dcffd3936, type: 3}
+  clickClip: {fileID: 8300000, guid: 00fd3b0eff5058a4a8cce5853d08ca78, type: 3}
 --- !u!1 &78510936
 GameObject:
   m_ObjectHideFlags: 0
@@ -627,6 +657,7 @@ GameObject:
   - component: {fileID: 78510940}
   - component: {fileID: 78510939}
   - component: {fileID: 78510938}
+  - component: {fileID: 78510941}
   m_Layer: 5
   m_Name: BtnStep
   m_TagString: Untagged
@@ -736,6 +767,20 @@ CanvasRenderer:
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 78510936}
   m_CullTransparentMesh: 1
+--- !u!114 &78510941
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 78510936}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: f55f9971b4faaca4bb0e884ab432c81f, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  hoverClip: {fileID: 8300000, guid: 10500dc1756238c4e88b936dcffd3936, type: 3}
+  clickClip: {fileID: 8300000, guid: 00fd3b0eff5058a4a8cce5853d08ca78, type: 3}
 --- !u!1 &79392730
 GameObject:
   m_ObjectHideFlags: 0
@@ -1392,6 +1437,7 @@ GameObject:
   - component: {fileID: 220041291}
   - component: {fileID: 220041290}
   - component: {fileID: 220041289}
+  - component: {fileID: 220041292}
   m_Layer: 5
   m_Name: BtnReset
   m_TagString: Untagged
@@ -1501,6 +1547,20 @@ CanvasRenderer:
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 220041287}
   m_CullTransparentMesh: 1
+--- !u!114 &220041292
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 220041287}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: f55f9971b4faaca4bb0e884ab432c81f, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  hoverClip: {fileID: 8300000, guid: 10500dc1756238c4e88b936dcffd3936, type: 3}
+  clickClip: {fileID: 8300000, guid: 00fd3b0eff5058a4a8cce5853d08ca78, type: 3}
 --- !u!1 &251080143
 GameObject:
   m_ObjectHideFlags: 0
@@ -4054,6 +4114,7 @@ GameObject:
   - component: {fileID: 895561292}
   - component: {fileID: 895561291}
   - component: {fileID: 895561293}
+  - component: {fileID: 895561294}
   m_Layer: 5
   m_Name: BtnRebuild
   m_TagString: Untagged
@@ -4163,6 +4224,20 @@ MonoBehaviour:
   m_OnClick:
     m_PersistentCalls:
       m_Calls: []
+--- !u!114 &895561294
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 895561289}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: f55f9971b4faaca4bb0e884ab432c81f, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  hoverClip: {fileID: 8300000, guid: 10500dc1756238c4e88b936dcffd3936, type: 3}
+  clickClip: {fileID: 8300000, guid: 00fd3b0eff5058a4a8cce5853d08ca78, type: 3}
 --- !u!1 &907899830
 GameObject:
   m_ObjectHideFlags: 0
