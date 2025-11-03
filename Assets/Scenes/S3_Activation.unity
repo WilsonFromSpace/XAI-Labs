@@ -129,6 +129,7 @@ GameObject:
   m_Component:
   - component: {fileID: 12970669}
   - component: {fileID: 12970670}
+  - component: {fileID: 12970671}
   m_Layer: 5
   m_Name: SldLR
   m_TagString: Untagged
@@ -210,6 +211,22 @@ MonoBehaviour:
   m_OnValueChanged:
     m_PersistentCalls:
       m_Calls: []
+--- !u!114 &12970671
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 12970668}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: ac08c52aaa3563045b66d409516cab65, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  hoverClip: {fileID: 8300000, guid: 6d27e1c24ea4d1a43817f50da5bee92c, type: 3}
+  clickClip: {fileID: 8300000, guid: 00fd3b0eff5058a4a8cce5853d08ca78, type: 3}
+  hoverVol: 0.7
+  clickVol: 1
 --- !u!1 &50236407
 GameObject:
   m_ObjectHideFlags: 0
@@ -1143,6 +1160,7 @@ GameObject:
   - component: {fileID: 148445361}
   - component: {fileID: 148445360}
   - component: {fileID: 148445363}
+  - component: {fileID: 148445364}
   m_Layer: 5
   m_Name: BtnReset
   m_TagString: Untagged
@@ -1266,6 +1284,22 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   hoverClip: {fileID: 8300000, guid: 10500dc1756238c4e88b936dcffd3936, type: 3}
   clickClip: {fileID: 8300000, guid: 00fd3b0eff5058a4a8cce5853d08ca78, type: 3}
+--- !u!114 &148445364
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 148445358}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: ac08c52aaa3563045b66d409516cab65, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  hoverClip: {fileID: 8300000, guid: 6d27e1c24ea4d1a43817f50da5bee92c, type: 3}
+  clickClip: {fileID: 8300000, guid: 00fd3b0eff5058a4a8cce5853d08ca78, type: 3}
+  hoverVol: 0.7
+  clickVol: 1
 --- !u!1 &149866419
 GameObject:
   m_ObjectHideFlags: 0
@@ -1276,6 +1310,7 @@ GameObject:
   m_Component:
   - component: {fileID: 149866420}
   - component: {fileID: 149866421}
+  - component: {fileID: 149866422}
   m_Layer: 5
   m_Name: TglAuto
   m_TagString: Untagged
@@ -1352,6 +1387,22 @@ MonoBehaviour:
     m_PersistentCalls:
       m_Calls: []
   m_IsOn: 0
+--- !u!114 &149866422
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 149866419}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: ac08c52aaa3563045b66d409516cab65, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  hoverClip: {fileID: 8300000, guid: 6d27e1c24ea4d1a43817f50da5bee92c, type: 3}
+  clickClip: {fileID: 8300000, guid: 00fd3b0eff5058a4a8cce5853d08ca78, type: 3}
+  hoverVol: 0.7
+  clickVol: 1
 --- !u!1 &150436417
 GameObject:
   m_ObjectHideFlags: 0
@@ -1662,6 +1713,7 @@ GameObject:
   m_Component:
   - component: {fileID: 298053146}
   - component: {fileID: 298053147}
+  - component: {fileID: 298053148}
   m_Layer: 5
   m_Name: TglBeginner
   m_TagString: Untagged
@@ -1738,6 +1790,22 @@ MonoBehaviour:
     m_PersistentCalls:
       m_Calls: []
   m_IsOn: 1
+--- !u!114 &298053148
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 298053145}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: ac08c52aaa3563045b66d409516cab65, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  hoverClip: {fileID: 8300000, guid: 6d27e1c24ea4d1a43817f50da5bee92c, type: 3}
+  clickClip: {fileID: 8300000, guid: 00fd3b0eff5058a4a8cce5853d08ca78, type: 3}
+  hoverVol: 0.7
+  clickVol: 1
 --- !u!1 &308052061
 GameObject:
   m_ObjectHideFlags: 0
@@ -2127,6 +2195,7 @@ GameObject:
   m_Component:
   - component: {fileID: 429589945}
   - component: {fileID: 429589946}
+  - component: {fileID: 429589947}
   m_Layer: 5
   m_Name: TglMinibatch
   m_TagString: Untagged
@@ -2203,6 +2272,22 @@ MonoBehaviour:
     m_PersistentCalls:
       m_Calls: []
   m_IsOn: 0
+--- !u!114 &429589947
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 429589944}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: ac08c52aaa3563045b66d409516cab65, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  hoverClip: {fileID: 8300000, guid: 6d27e1c24ea4d1a43817f50da5bee92c, type: 3}
+  clickClip: {fileID: 8300000, guid: 00fd3b0eff5058a4a8cce5853d08ca78, type: 3}
+  hoverVol: 0.7
+  clickVol: 1
 --- !u!1 &437592406
 GameObject:
   m_ObjectHideFlags: 0
@@ -2957,6 +3042,7 @@ GameObject:
   - component: {fileID: 716017531}
   - component: {fileID: 716017530}
   - component: {fileID: 716017533}
+  - component: {fileID: 716017534}
   m_Layer: 5
   m_Name: BackButton
   m_TagString: Untagged
@@ -3092,6 +3178,22 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   hoverClip: {fileID: 8300000, guid: 10500dc1756238c4e88b936dcffd3936, type: 3}
   clickClip: {fileID: 8300000, guid: 00fd3b0eff5058a4a8cce5853d08ca78, type: 3}
+--- !u!114 &716017534
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 716017528}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: ac08c52aaa3563045b66d409516cab65, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  hoverClip: {fileID: 8300000, guid: 6d27e1c24ea4d1a43817f50da5bee92c, type: 3}
+  clickClip: {fileID: 8300000, guid: 00fd3b0eff5058a4a8cce5853d08ca78, type: 3}
+  hoverVol: 0.7
+  clickVol: 1
 --- !u!1 &735752789
 GameObject:
   m_ObjectHideFlags: 0
@@ -4454,6 +4556,7 @@ GameObject:
   - component: {fileID: 1389089551}
   - component: {fileID: 1389089550}
   - component: {fileID: 1389089553}
+  - component: {fileID: 1389089554}
   m_Layer: 5
   m_Name: BtnShuffle
   m_TagString: Untagged
@@ -4577,6 +4680,22 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   hoverClip: {fileID: 8300000, guid: 10500dc1756238c4e88b936dcffd3936, type: 3}
   clickClip: {fileID: 8300000, guid: 00fd3b0eff5058a4a8cce5853d08ca78, type: 3}
+--- !u!114 &1389089554
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1389089548}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: ac08c52aaa3563045b66d409516cab65, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  hoverClip: {fileID: 8300000, guid: 6d27e1c24ea4d1a43817f50da5bee92c, type: 3}
+  clickClip: {fileID: 8300000, guid: 00fd3b0eff5058a4a8cce5853d08ca78, type: 3}
+  hoverVol: 0.7
+  clickVol: 1
 --- !u!1 &1392600104
 GameObject:
   m_ObjectHideFlags: 0
@@ -5952,6 +6071,7 @@ GameObject:
   - component: {fileID: 2000723310}
   - component: {fileID: 2000723309}
   - component: {fileID: 2000723312}
+  - component: {fileID: 2000723313}
   m_Layer: 5
   m_Name: BtnStep
   m_TagString: Untagged
@@ -6075,6 +6195,22 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   hoverClip: {fileID: 8300000, guid: 10500dc1756238c4e88b936dcffd3936, type: 3}
   clickClip: {fileID: 8300000, guid: 00fd3b0eff5058a4a8cce5853d08ca78, type: 3}
+--- !u!114 &2000723313
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 2000723307}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: ac08c52aaa3563045b66d409516cab65, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  hoverClip: {fileID: 8300000, guid: 6d27e1c24ea4d1a43817f50da5bee92c, type: 3}
+  clickClip: {fileID: 8300000, guid: 00fd3b0eff5058a4a8cce5853d08ca78, type: 3}
+  hoverVol: 0.7
+  clickVol: 1
 --- !u!1 &2031349732
 GameObject:
   m_ObjectHideFlags: 0
@@ -6297,6 +6433,7 @@ GameObject:
   m_Component:
   - component: {fileID: 2084803956}
   - component: {fileID: 2084803957}
+  - component: {fileID: 2084803958}
   m_Layer: 5
   m_Name: SldBatch
   m_TagString: Untagged
@@ -6378,6 +6515,22 @@ MonoBehaviour:
   m_OnValueChanged:
     m_PersistentCalls:
       m_Calls: []
+--- !u!114 &2084803958
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 2084803955}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: ac08c52aaa3563045b66d409516cab65, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  hoverClip: {fileID: 8300000, guid: 6d27e1c24ea4d1a43817f50da5bee92c, type: 3}
+  clickClip: {fileID: 8300000, guid: 00fd3b0eff5058a4a8cce5853d08ca78, type: 3}
+  hoverVol: 0.7
+  clickVol: 1
 --- !u!1 &2090962632
 GameObject:
   m_ObjectHideFlags: 0
@@ -6601,6 +6754,7 @@ GameObject:
   - component: {fileID: 2104437662}
   - component: {fileID: 2104437661}
   - component: {fileID: 2104437660}
+  - component: {fileID: 2104437663}
   m_Layer: 5
   m_Name: DrpActivation
   m_TagString: Untagged
@@ -6733,6 +6887,22 @@ CanvasRenderer:
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 2104437658}
   m_CullTransparentMesh: 1
+--- !u!114 &2104437663
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 2104437658}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: ac08c52aaa3563045b66d409516cab65, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  hoverClip: {fileID: 8300000, guid: 6d27e1c24ea4d1a43817f50da5bee92c, type: 3}
+  clickClip: {fileID: 8300000, guid: 00fd3b0eff5058a4a8cce5853d08ca78, type: 3}
+  hoverVol: 0.7
+  clickVol: 1
 --- !u!1660057539 &9223372036854775807
 SceneRoots:
   m_ObjectHideFlags: 0

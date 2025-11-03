@@ -337,11 +337,13 @@ MonoBehaviour:
   m_GameObject: {fileID: 77339353}
   m_Enabled: 1
   m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: f55f9971b4faaca4bb0e884ab432c81f, type: 3}
+  m_Script: {fileID: 11500000, guid: ac08c52aaa3563045b66d409516cab65, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  hoverClip: {fileID: 8300000, guid: 10500dc1756238c4e88b936dcffd3936, type: 3}
+  hoverClip: {fileID: 8300000, guid: 6d27e1c24ea4d1a43817f50da5bee92c, type: 3}
   clickClip: {fileID: 8300000, guid: 00fd3b0eff5058a4a8cce5853d08ca78, type: 3}
+  hoverVol: 0.7
+  clickVol: 1
 --- !u!1 &159344552
 GameObject:
   m_ObjectHideFlags: 0
@@ -485,11 +487,13 @@ MonoBehaviour:
   m_GameObject: {fileID: 159344552}
   m_Enabled: 1
   m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: f55f9971b4faaca4bb0e884ab432c81f, type: 3}
+  m_Script: {fileID: 11500000, guid: ac08c52aaa3563045b66d409516cab65, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  hoverClip: {fileID: 8300000, guid: 10500dc1756238c4e88b936dcffd3936, type: 3}
+  hoverClip: {fileID: 8300000, guid: 6d27e1c24ea4d1a43817f50da5bee92c, type: 3}
   clickClip: {fileID: 8300000, guid: 00fd3b0eff5058a4a8cce5853d08ca78, type: 3}
+  hoverVol: 0.7
+  clickVol: 1
 --- !u!1 &221397729
 GameObject:
   m_ObjectHideFlags: 0
@@ -633,11 +637,13 @@ MonoBehaviour:
   m_GameObject: {fileID: 221397729}
   m_Enabled: 1
   m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: f55f9971b4faaca4bb0e884ab432c81f, type: 3}
+  m_Script: {fileID: 11500000, guid: ac08c52aaa3563045b66d409516cab65, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  hoverClip: {fileID: 8300000, guid: 10500dc1756238c4e88b936dcffd3936, type: 3}
+  hoverClip: {fileID: 8300000, guid: 6d27e1c24ea4d1a43817f50da5bee92c, type: 3}
   clickClip: {fileID: 8300000, guid: 00fd3b0eff5058a4a8cce5853d08ca78, type: 3}
+  hoverVol: 0.7
+  clickVol: 1
 --- !u!1 &273067534
 GameObject:
   m_ObjectHideFlags: 0
@@ -1812,11 +1818,13 @@ MonoBehaviour:
   m_GameObject: {fileID: 850508164}
   m_Enabled: 1
   m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: f55f9971b4faaca4bb0e884ab432c81f, type: 3}
+  m_Script: {fileID: 11500000, guid: ac08c52aaa3563045b66d409516cab65, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  hoverClip: {fileID: 8300000, guid: 10500dc1756238c4e88b936dcffd3936, type: 3}
+  hoverClip: {fileID: 8300000, guid: 6d27e1c24ea4d1a43817f50da5bee92c, type: 3}
   clickClip: {fileID: 8300000, guid: 00fd3b0eff5058a4a8cce5853d08ca78, type: 3}
+  hoverVol: 0.7
+  clickVol: 1
 --- !u!1 &1051756907
 GameObject:
   m_ObjectHideFlags: 0
@@ -1960,11 +1968,13 @@ MonoBehaviour:
   m_GameObject: {fileID: 1051756907}
   m_Enabled: 1
   m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: f55f9971b4faaca4bb0e884ab432c81f, type: 3}
+  m_Script: {fileID: 11500000, guid: ac08c52aaa3563045b66d409516cab65, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  hoverClip: {fileID: 8300000, guid: 10500dc1756238c4e88b936dcffd3936, type: 3}
+  hoverClip: {fileID: 8300000, guid: 6d27e1c24ea4d1a43817f50da5bee92c, type: 3}
   clickClip: {fileID: 8300000, guid: 00fd3b0eff5058a4a8cce5853d08ca78, type: 3}
+  hoverVol: 0.7
+  clickVol: 1
 --- !u!1 &1055554959
 GameObject:
   m_ObjectHideFlags: 0
@@ -2916,11 +2926,13 @@ MonoBehaviour:
   m_GameObject: {fileID: 1460318272}
   m_Enabled: 1
   m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: f55f9971b4faaca4bb0e884ab432c81f, type: 3}
+  m_Script: {fileID: 11500000, guid: ac08c52aaa3563045b66d409516cab65, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  hoverClip: {fileID: 8300000, guid: 10500dc1756238c4e88b936dcffd3936, type: 3}
+  hoverClip: {fileID: 8300000, guid: 6d27e1c24ea4d1a43817f50da5bee92c, type: 3}
   clickClip: {fileID: 8300000, guid: 00fd3b0eff5058a4a8cce5853d08ca78, type: 3}
+  hoverVol: 0.7
+  clickVol: 1
 --- !u!1 &1511183153
 GameObject:
   m_ObjectHideFlags: 0
@@ -3064,11 +3076,61 @@ MonoBehaviour:
   m_GameObject: {fileID: 1511183153}
   m_Enabled: 1
   m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: f55f9971b4faaca4bb0e884ab432c81f, type: 3}
+  m_Script: {fileID: 11500000, guid: ac08c52aaa3563045b66d409516cab65, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  hoverClip: {fileID: 8300000, guid: 10500dc1756238c4e88b936dcffd3936, type: 3}
+  hoverClip: {fileID: 8300000, guid: 6d27e1c24ea4d1a43817f50da5bee92c, type: 3}
   clickClip: {fileID: 8300000, guid: 00fd3b0eff5058a4a8cce5853d08ca78, type: 3}
+  hoverVol: 0.7
+  clickVol: 1
+--- !u!1 &1847761099
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 1847761101}
+  - component: {fileID: 1847761100}
+  m_Layer: 0
+  m_Name: SceneAudio
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!114 &1847761100
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1847761099}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 6fdef5bc3f392bf40a9878214b609990, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  track: {fileID: 8300000, guid: 134104bc01e9f794cb93fbb033567fb6, type: 3}
+  volume: 0.5
+  fade: 1
+  fadeTime: 1
+--- !u!4 &1847761101
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1847761099}
+  serializedVersion: 2
+  m_LocalRotation: {x: -0, y: -0, z: -0, w: 1}
+  m_LocalPosition: {x: 1345.179, y: 821.5121, z: 0}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 0}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
 --- !u!1 &1848320289
 GameObject:
   m_ObjectHideFlags: 0
@@ -3348,11 +3410,13 @@ MonoBehaviour:
   m_GameObject: {fileID: 1915595320}
   m_Enabled: 1
   m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: f55f9971b4faaca4bb0e884ab432c81f, type: 3}
+  m_Script: {fileID: 11500000, guid: ac08c52aaa3563045b66d409516cab65, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  hoverClip: {fileID: 8300000, guid: 10500dc1756238c4e88b936dcffd3936, type: 3}
+  hoverClip: {fileID: 8300000, guid: 6d27e1c24ea4d1a43817f50da5bee92c, type: 3}
   clickClip: {fileID: 8300000, guid: 00fd3b0eff5058a4a8cce5853d08ca78, type: 3}
+  hoverVol: 0.7
+  clickVol: 1
 --- !u!1 &1953134781
 GameObject:
   m_ObjectHideFlags: 0
@@ -3496,11 +3560,13 @@ MonoBehaviour:
   m_GameObject: {fileID: 1953134781}
   m_Enabled: 1
   m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: f55f9971b4faaca4bb0e884ab432c81f, type: 3}
+  m_Script: {fileID: 11500000, guid: ac08c52aaa3563045b66d409516cab65, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  hoverClip: {fileID: 8300000, guid: 10500dc1756238c4e88b936dcffd3936, type: 3}
+  hoverClip: {fileID: 8300000, guid: 6d27e1c24ea4d1a43817f50da5bee92c, type: 3}
   clickClip: {fileID: 8300000, guid: 00fd3b0eff5058a4a8cce5853d08ca78, type: 3}
+  hoverVol: 0.7
+  clickVol: 1
 --- !u!1660057539 &9223372036854775807
 SceneRoots:
   m_ObjectHideFlags: 0
@@ -3508,3 +3574,4 @@ SceneRoots:
   - {fileID: 1393379680}
   - {fileID: 1165581760}
   - {fileID: 391122815}
+  - {fileID: 1847761101}
