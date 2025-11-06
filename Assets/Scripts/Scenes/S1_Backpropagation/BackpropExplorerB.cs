@@ -108,6 +108,9 @@ public class BackpropExplorerB : MonoBehaviour
 
         // optional probe
         if (probe != null) probe.mlp = mlp;
+
+        // initial faithfulness report
+        ReportFaithfulnessToTracker();
     }
 
     void Update()
@@ -131,13 +134,6 @@ public class BackpropExplorerB : MonoBehaviour
             foreach (var idx in lastBatchIdx)
                 if ((uint)idx < (uint)pointGOs.Count)
                     pointGOs[idx].transform.localScale = Vector3.one * scale;
-
-            if (highlightTimer <= 0f)
-            {
-                foreach (var idx in lastBatchIdx)
-                    if ((uint)idx < (uint)pointGOs.Count)
-                        pointGOs[idx].transform.localScale = Vector3.one * 0.15f;
-            }
         }
 
         // shortcuts
@@ -154,6 +150,11 @@ public class BackpropExplorerB : MonoBehaviour
         NotifyPanels();
         UpdateAccuracyBadge();
         if (highlightMistakes) MarkMistakes();
+
+        // Gamification: record tried variant + re-check faithfulness
+        var tracker = UnityEngine.Object.FindFirstObjectByType<ObjectiveTracker>();
+        tracker?.ReportTriedVariant(((Act)idx).ToString());
+        ReportFaithfulnessToTracker();
     }
 
     void SpawnPoints()
@@ -215,6 +216,11 @@ public class BackpropExplorerB : MonoBehaviour
         if (highlightMistakes) MarkMistakes();
 
         prevLoss = loss;
+
+        // Gamification: count action + report faithfulness
+        var tracker = UnityEngine.Object.FindFirstObjectByType<ObjectiveTracker>();
+        tracker?.ReportAction("weight_adjust");
+        ReportFaithfulnessToTracker();
     }
 
     void RedrawField() => field.Redraw(WorldToProb);
@@ -224,47 +230,39 @@ public class BackpropExplorerB : MonoBehaviour
         float[,] Xi = new float[1, 2] { { w.x, w.y } };
         float[,] Yi = new float[1, 1] { { 0f } };
         var (_, pred) = mlp.Forward(Xi, Yi);
-        return Mathf.Clamp01(pred[0, 0]);
+        return pred[0, 0];
     }
 
-    void UpdateLossText()
+    int[] SampleBatch(int bs, int n)
     {
-        var (loss, _) = mlp.Forward(X, Y);
-        txtLoss.text = $"Loss: {loss:F4} | LR: {mlp.lr:F4} | Act: {mlp.activation}";
-    }
-
-    // --- minibatch helpers ---
-    int[] SampleBatch(int bs, int total)
-    {
-        var set = new HashSet<int>();
-        while (set.Count < bs) set.Add(rnd.Next(total));
-        var arr = new int[bs]; int k = 0;
-        foreach (var i in set) arr[k++] = i;
-        return arr;
+        int[] idx = new int[bs];
+        for (int i = 0; i < bs; i++) idx[i] = rnd.Next(n);
+        return idx;
     }
 
     (float[,], float[,]) GatherBatch(int[] idx)
     {
-        var Xb = new float[idx.Length, 2];
-        var Yb = new float[idx.Length, 1];
-        for (int r = 0; r < idx.Length; r++)
+        int bs = idx.Length;
+        float[,] Xb = new float[bs, 2];
+        float[,] Yb = new float[bs, 1];
+        for (int i = 0; i < bs; i++)
         {
-            int i = idx[r];
-            Xb[r, 0] = dataset.points[i].x;
-            Xb[r, 1] = dataset.points[i].y;
-            Yb[r, 0] = dataset.labels[i];
+            Xb[i, 0] = X[idx[i], 0];
+            Xb[i, 1] = X[idx[i], 1];
+            Yb[i, 0] = Y[idx[i], 0];
         }
         return (Xb, Yb);
     }
 
     void UpdateBatchLabel()
     {
-        if (txtBatch && sldBatch) txtBatch.text = $"Batch: {(int)sldBatch.value}";
+        if (txtBatch == null) return;
+        int bs = (int)sldBatch.value;
+        txtBatch.text = $"Batch: {bs}";
     }
 
     void PushLossToChart()
     {
-        if (!lossChart) return;
         var (loss, _) = mlp.Forward(X, Y);
         lossChart.Push(loss);
     }
@@ -278,6 +276,14 @@ public class BackpropExplorerB : MonoBehaviour
     void UpdateAccuracyBadge()
     {
         accuracyBadge?.UpdateFrom(mlp, X, Y, stepCount);
+    }
+
+    // NEW: re-usable loss text (was missing and caused your error)
+    void UpdateLossText()
+    {
+        if (mlp == null || X == null || Y == null || txtLoss == null) return;
+        var (loss, _) = mlp.Forward(X, Y);
+        txtLoss.text = $"Loss: {loss:F4} | LR: {mlp.lr:F4} | Act: {mlp.activation}";
     }
 
     // --- extra actions ---
@@ -298,6 +304,9 @@ public class BackpropExplorerB : MonoBehaviour
 
         if (probe != null) probe.mlp = mlp;
         if (highlightMistakes) MarkMistakes();
+
+        // Recompute/Report F after reset
+        ReportFaithfulnessToTracker();
     }
 
     void ShuffleData()
@@ -316,6 +325,9 @@ public class BackpropExplorerB : MonoBehaviour
         // lossChart?.ClearSeries();
 
         if (highlightMistakes) MarkMistakes();
+
+        // Recompute/Report F after shuffle
+        ReportFaithfulnessToTracker();
     }
 
     // --- optional: misclassification tinting ---
@@ -329,5 +341,27 @@ public class BackpropExplorerB : MonoBehaviour
             var baseCol = basePointColors[i];
             sr.color = wrong ? Color.Lerp(baseCol, wrongTint, 0.55f) : baseCol;
         }
+    }
+
+    // --- helper: compute current accuracy (used as faithfulness proxy) ---
+    float ComputeFaithfulness()
+    {
+        if (mlp == null || X == null || Y == null) return 0f;
+        var (_, P) = mlp.Forward(X, Y);
+        int n = P.GetLength(0), correct = 0;
+        for (int i = 0; i < n; i++)
+        {
+            bool pred = P[i, 0] >= 0.5f;
+            bool lab = Y[i, 0] >= 0.5f;
+            if (pred == lab) correct++;
+        }
+        return n > 0 ? (float)correct / n : 0f; // 0..1
+    }
+
+    void ReportFaithfulnessToTracker()
+    {
+        var tracker = UnityEngine.Object.FindFirstObjectByType<ObjectiveTracker>();
+        if (tracker == null) return;
+        tracker.ReportFaithfulness(ComputeFaithfulness());
     }
 }
