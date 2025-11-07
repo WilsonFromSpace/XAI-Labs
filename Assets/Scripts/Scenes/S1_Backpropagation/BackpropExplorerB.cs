@@ -343,25 +343,92 @@ public class BackpropExplorerB : MonoBehaviour
         }
     }
 
-    // --- helper: compute current accuracy (used as faithfulness proxy) ---
+    // --- Faithfulness: perturbation-based stability around correctly classified points ---
     float ComputeFaithfulness()
     {
         if (mlp == null || X == null || Y == null) return 0f;
-        var (_, P) = mlp.Forward(X, Y);
-        int n = P.GetLength(0), correct = 0;
+
+        int n = X.GetLength(0);
+        if (n == 0) return 0f;
+
+        // Determine data scale (for sensible perturbations)
+        float minX = float.PositiveInfinity, maxX = float.NegativeInfinity;
+        float minY = float.PositiveInfinity, maxY = float.NegativeInfinity;
         for (int i = 0; i < n; i++)
         {
-            bool pred = P[i, 0] >= 0.5f;
-            bool lab = Y[i, 0] >= 0.5f;
-            if (pred == lab) correct++;
+            float px = X[i, 0];
+            float py = X[i, 1];
+            if (px < minX) minX = px; if (px > maxX) maxX = px;
+            if (py < minY) minY = py; if (py > maxY) maxY = py;
         }
-        return n > 0 ? (float)correct / n : 0f; // 0..1
+        float scaleX = Mathf.Max(1e-4f, maxX - minX);
+        float scaleY = Mathf.Max(1e-4f, maxY - minY);
+        float sigmaX = 0.05f * scaleX;   // 5% of data range
+        float sigmaY = 0.05f * scaleY;
+
+        int maxSamples = Mathf.Min(200, n);   // cap for speed
+        int kPerturb = 3;                     // perturbations per point
+
+        float sumStability = 0f;
+        int stableCount = 0;
+
+        for (int si = 0; si < maxSamples; si++)
+        {
+            int i = si * n / maxSamples;      // spread across dataset
+
+            // base prediction
+            float[,] Xi = new float[1, 2] { { X[i, 0], X[i, 1] } };
+            float[,] Yi = new float[1, 1] { { Y[i, 0] } };
+            var (_, Pbase) = mlp.Forward(Xi, Yi);
+            float p = Pbase[0, 0];
+            bool pred = p >= 0.5f;
+            bool lab = Y[i, 0] >= 0.5f;
+
+            // only reward regions the model currently gets right
+            if (pred != lab) continue;
+
+            float deltaSum = 0f;
+
+            for (int k = 0; k < kPerturb; k++)
+            {
+                float dx = NextGaussian() * sigmaX;
+                float dy = NextGaussian() * sigmaY;
+                float nx = Mathf.Clamp(X[i, 0] + dx, minX, maxX);
+                float ny = Mathf.Clamp(X[i, 1] + dy, minY, maxY);
+
+                float[,] Xp = new float[1, 2] { { nx, ny } };
+                var (_, Pp) = mlp.Forward(Xp, Yi);
+                float pp = Pp[0, 0];
+
+                deltaSum += Mathf.Abs(pp - p);    // how much the prob changed
+            }
+
+            float avgDelta = deltaSum / kPerturb;   // 0..1
+            float stability = Mathf.Clamp01(1f - avgDelta); // 1 = very stable
+            sumStability += stability;
+            stableCount++;
+        }
+
+        if (stableCount == 0) return 0f;
+        return sumStability / stableCount; // 0..1
+    }
+
+    // Box-Muller transform using existing rng
+    float NextGaussian()
+    {
+        double u1 = 1.0 - rnd.NextDouble();
+        double u2 = 1.0 - rnd.NextDouble();
+        double randStdNormal = Math.Sqrt(-2.0 * Math.Log(u1)) * Math.Sin(2.0 * Math.PI * u2);
+        return (float)randStdNormal;
     }
 
     void ReportFaithfulnessToTracker()
     {
         var tracker = UnityEngine.Object.FindFirstObjectByType<ObjectiveTracker>();
         if (tracker == null) return;
-        tracker.ReportFaithfulness(ComputeFaithfulness());
+
+        float F = ComputeFaithfulness();
+        tracker.ReportFaithfulness(F);
     }
+
 }

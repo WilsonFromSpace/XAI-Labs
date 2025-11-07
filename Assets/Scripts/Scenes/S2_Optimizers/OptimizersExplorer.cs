@@ -43,6 +43,9 @@ public class OptimizersExplorer : MonoBehaviour
     float timer = 0f;
     const float dt = 0.05f;
 
+    // Gamification
+    ObjectiveTracker _tracker;
+
     void Start()
     {
         // dataset runtime clone + random pose
@@ -70,32 +73,53 @@ public class OptimizersExplorer : MonoBehaviour
         optAdam.beta1 = sldAdamB1.value;
         optAdam.beta2 = sldAdamB2.value;
 
+        // Gamification: cache tracker
+        _tracker = UnityEngine.Object.FindFirstObjectByType<ObjectiveTracker>();
+
         // UI hooks
         btnStep.onClick.AddListener(Step);
         tglAuto.onValueChanged.AddListener(v => auto = v);
-        drpFocus.onValueChanged.AddListener(_ => RedrawField());
+        drpFocus.onValueChanged.AddListener(OnFocusChanged);
         drpActivation.onValueChanged.AddListener(OnActivationChanged);
-        tglMinibatch.onValueChanged.AddListener(_ => { /* no op */ });
-        sldBatch.onValueChanged.AddListener(_ => { /* label optional */ });
-        sldLR.onValueChanged.AddListener(_ => { /* realtime */ });
+        tglMinibatch.onValueChanged.AddListener(_ => { /* optional label */ });
+        sldBatch.onValueChanged.AddListener(_ => { /* optional label */ });
+        sldLR.onValueChanged.AddListener(_ => { /* used on Step */ });
         sldMomentum.onValueChanged.AddListener(v => optMom.beta = v);
         sldAdamB1.onValueChanged.AddListener(v => optAdam.beta1 = v);
         sldAdamB2.onValueChanged.AddListener(v => optAdam.beta2 = v);
         btnReset.onClick.AddListener(ResetAll);
         btnShuffle.onClick.AddListener(ShuffleData);
 
-        // points & field
+        // points & field & initial losses
         SpawnPoints();
         RedrawField();
-        PushChart(); // initial losses
-        UpdateLossLabel();
+        PushInitialLossesAndReport();
     }
 
     void Update()
     {
         if (!auto) return;
         timer += Time.deltaTime;
-        if (timer >= dt) { timer = 0f; Step(); }
+        if (timer >= dt)
+        {
+            timer = 0f;
+            Step();
+        }
+    }
+
+    // ---------------- Core interactions ----------------
+
+    void OnFocusChanged(int idx)
+    {
+        RedrawField();
+
+        // Gamification: mark that this optimizer has been inspected
+        if (_tracker == null) _tracker = UnityEngine.Object.FindFirstObjectByType<ObjectiveTracker>();
+        if (_tracker != null)
+        {
+            string name = idx == 0 ? "SGD" : idx == 1 ? "Momentum" : "Adam";
+            _tracker.ReportTriedVariant(name);
+        }
     }
 
     void OnActivationChanged(int idx)
@@ -104,6 +128,9 @@ public class OptimizersExplorer : MonoBehaviour
         mlpMom.activation = (Act)idx;
         mlpAdam.activation = (Act)idx;
         RedrawField();
+
+        // Recompute + log after activation change
+        PushLossesAndReport();
     }
 
     void Step()
@@ -131,8 +158,7 @@ public class OptimizersExplorer : MonoBehaviour
 
         // UI
         RedrawField();
-        PushChart();
-        UpdateLossLabel();
+        PushLossesAndReport();
     }
 
     void RedrawField()
@@ -151,33 +177,77 @@ public class OptimizersExplorer : MonoBehaviour
         return mlpAdam.Forward(Xi, Yi).Item2[0, 0];
     }
 
-    void PushChart()
+    // ---------------- Loss, chart & gamification ----------------
+
+    void PushInitialLossesAndReport()
     {
         var lS = mlpSGD.Forward(X, Y).loss;
         var lM = mlpMom.Forward(X, Y).loss;
         var lA = mlpAdam.Forward(X, Y).loss;
         chart?.Push(lS, lM, lA);
+        UpdateLossLabelFromCurrentFocus();
+        ReportLossObjective(lS, lM, lA);
+        ReportFaithfulnessForBestModel();
     }
 
-    void UpdateLossLabel()
+    void PushLossesAndReport()
+    {
+        var lS = mlpSGD.Forward(X, Y).loss;
+        var lM = mlpMom.Forward(X, Y).loss;
+        var lA = mlpAdam.Forward(X, Y).loss;
+        chart?.Push(lS, lM, lA);
+        UpdateLossLabelFromCurrentFocus();
+        ReportLossObjective(lS, lM, lA);
+        ReportFaithfulnessForBestModel();
+    }
+
+    void ReportLossObjective(float lSGD, float lMom, float lAdam)
+    {
+        if (_tracker == null) _tracker = UnityEngine.Object.FindFirstObjectByType<ObjectiveTracker>();
+        if (_tracker == null) return;
+
+        // use best optimizer loss as signal for S2_LOSS015 (LossAtMost)
+        float best = Mathf.Min(lSGD, Mathf.Min(lMom, lAdam));
+        _tracker.ReportLoss(best);
+    }
+
+    void UpdateLossLabelFromCurrentFocus()
     {
         if (txtLoss == null) return;
+
         var choice = drpFocus.value;
-        float curr = (choice == 0 ? mlpSGD : choice == 1 ? mlpMom : mlpAdam).Forward(X, Y).loss;
-        string name = choice == 0 ? "SGD" : choice == 1 ? "Momentum" : "Adam";
+        string name;
+        float curr;
+        if (choice == 0)
+        {
+            name = "SGD";
+            curr = mlpSGD.Forward(X, Y).loss;
+        }
+        else if (choice == 1)
+        {
+            name = "Momentum";
+            curr = mlpMom.Forward(X, Y).loss;
+        }
+        else
+        {
+            name = "Adam";
+            curr = mlpAdam.Forward(X, Y).loss;
+        }
+
         txtLoss.text = $"[{name}] Loss: {curr:F4} | LR: {sldLR.value:F4}";
     }
 
     // ----- utils -----
+
     void SpawnPoints()
     {
         for (int i = pointsParent.childCount - 1; i >= 0; i--)
-            Destroy(pointsParent.GetChild(i).gameObject);
+            UnityEngine.Object.Destroy(pointsParent.GetChild(i).gameObject);
         pointGOs.Clear();
 
         for (int i = 0; i < dataset.points.Length; i++)
         {
-            var go = Instantiate(pointPrefab, dataset.points[i], Quaternion.identity, pointsParent);
+            var go = UnityEngine.Object.Instantiate(pointPrefab, dataset.points[i], Quaternion.identity, pointsParent);
             var sr = go.GetComponent<SpriteRenderer>();
             sr.color = dataset.labels[i] > 0.5f ? new Color(0.94f, 0.28f, 0.28f) : new Color(0.28f, 0.46f, 0.94f);
             sr.sortingOrder = 10;
@@ -203,8 +273,8 @@ public class OptimizersExplorer : MonoBehaviour
 
         chart?.ClearSeries();
         RedrawField();
-        PushChart();
-        UpdateLossLabel();
+        PushInitialLossesAndReport();
+        ReportFaithfulnessForBestModel();
     }
 
     void ShuffleData()
@@ -215,22 +285,31 @@ public class OptimizersExplorer : MonoBehaviour
         SpawnPoints();
         chart?.ClearSeries();
         RedrawField();
-        PushChart();
-        UpdateLossLabel();
+        PushInitialLossesAndReport();
+        ReportFaithfulnessForBestModel();
     }
 
     int[] SampleBatch(int bs, int total)
     {
         var set = new HashSet<int>();
         while (set.Count < bs) set.Add(rnd.Next(total));
-        var arr = new int[bs]; int k = 0; foreach (var i in set) arr[k++] = i; return arr;
+        var arr = new int[bs];
+        int k = 0;
+        foreach (var i in set) arr[k++] = i;
+        return arr;
     }
+
     (float[,], float[,]) GatherBatch(int[] idx)
     {
         var Xb = new float[idx.Length, 2];
         var Yb = new float[idx.Length, 1];
         for (int r = 0; r < idx.Length; r++)
-        { int i = idx[r]; Xb[r, 0] = dataset.points[i].x; Xb[r, 1] = dataset.points[i].y; Yb[r, 0] = dataset.labels[i]; }
+        {
+            int i = idx[r];
+            Xb[r, 0] = dataset.points[i].x;
+            Xb[r, 1] = dataset.points[i].y;
+            Yb[r, 0] = dataset.labels[i];
+        }
         return (Xb, Yb);
     }
 
@@ -246,7 +325,7 @@ public class OptimizersExplorer : MonoBehaviour
         dst.activation = src.activation;
         dst.lr = src.lr;
 
-        // deep copy weights & biases (no TinyTensor.Copy needed)
+        // deep copy weights & biases
         dst.Ls[0].W = Copy2D(src.Ls[0].W);
         dst.Ls[0].b = Copy1D(src.Ls[0].b);
         dst.Ls[1].W = Copy2D(src.Ls[1].W);
@@ -270,6 +349,100 @@ public class OptimizersExplorer : MonoBehaviour
         var b = new float[a.Length];
         for (int i = 0; i < a.Length; i++) b[i] = a[i];
         return b;
+    }
+
+    // --------- Public hook for "Finish under 240s" objective ---------
+    // Wire this to your "Next"/"Continue" button in this scene.
+    public void OnSceneCompleted()
+    {
+        if (_tracker == null) _tracker = UnityEngine.Object.FindFirstObjectByType<ObjectiveTracker>();
+        _tracker?.ReportSceneFinish();
+    }
+    // ---------- Faithfulness for Optimizers (same idea as Scene 1) ----------
+
+    float ComputeFaithfulness(MLP model)
+    {
+        if (model == null || X == null || Y == null) return 0f;
+        int n = X.GetLength(0);
+        if (n == 0) return 0f;
+
+        // bounds
+        float minX = float.PositiveInfinity, maxX = float.NegativeInfinity;
+        float minY = float.PositiveInfinity, maxY = float.NegativeInfinity;
+        for (int i = 0; i < n; i++)
+        {
+            float px = X[i, 0];
+            float py = X[i, 1];
+            if (px < minX) minX = px; if (px > maxX) maxX = px;
+            if (py < minY) minY = py; if (py > maxY) maxY = py;
+        }
+        float scaleX = Mathf.Max(1e-4f, maxX - minX);
+        float scaleY = Mathf.Max(1e-4f, maxY - minY);
+        float sigmaX = 0.05f * scaleX;
+        float sigmaY = 0.05f * scaleY;
+
+        int maxSamples = Mathf.Min(200, n);
+        int kPerturb = 3;
+        float sumStability = 0f;
+        int stableCount = 0;
+
+        for (int si = 0; si < maxSamples; si++)
+        {
+            int i = si * n / maxSamples;
+
+            float[,] Xi = new float[1, 2] { { X[i, 0], X[i, 1] } };
+            float[,] Yi = new float[1, 1] { { Y[i, 0] } };
+            var (_, Pbase) = model.Forward(Xi, Yi);
+            float p = Pbase[0, 0];
+            bool pred = p >= 0.5f;
+            bool lab = Y[i, 0] >= 0.5f;
+            if (pred != lab) continue;
+
+            float deltaSum = 0f;
+
+            for (int k = 0; k < kPerturb; k++)
+            {
+                float dx = NextGaussian() * sigmaX;
+                float dy = NextGaussian() * sigmaY;
+                float nx = Mathf.Clamp(X[i, 0] + dx, minX, maxX);
+                float ny = Mathf.Clamp(X[i, 1] + dy, minY, maxY);
+
+                float[,] Xp = new float[1, 2] { { nx, ny } };
+                var (_, Pp) = model.Forward(Xp, Yi);
+                float pp = Pp[0, 0];
+                deltaSum += Mathf.Abs(pp - p);
+            }
+
+            float avgDelta = deltaSum / kPerturb;
+            float stability = Mathf.Clamp01(1f - avgDelta);
+            sumStability += stability;
+            stableCount++;
+        }
+
+        if (stableCount == 0) return 0f;
+        return sumStability / stableCount;
+    }
+
+    float NextGaussian()
+    {
+        double u1 = 1.0 - rnd.NextDouble();
+        double u2 = 1.0 - rnd.NextDouble();
+        double randStdNormal = Math.Sqrt(-2.0 * Math.Log(u1)) * Math.Sin(2.0 * Math.PI * u2);
+        return (float)randStdNormal;
+    }
+
+    // Report best optimizer's faithfulness (for logging / later comparison)
+    void ReportFaithfulnessForBestModel()
+    {
+        if (_tracker == null) _tracker = UnityEngine.Object.FindFirstObjectByType<ObjectiveTracker>();
+        if (_tracker == null) return;
+
+        float fS = ComputeFaithfulness(mlpSGD);
+        float fM = ComputeFaithfulness(mlpMom);
+        float fA = ComputeFaithfulness(mlpAdam);
+        float bestF = Mathf.Max(fS, Mathf.Max(fM, fA));
+
+        _tracker.ReportFaithfulness(bestF);
     }
 
 }
