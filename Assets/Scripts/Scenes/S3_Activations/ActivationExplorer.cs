@@ -40,7 +40,7 @@ public class ActivationExplorer : MonoBehaviour
     public bool desaturateUncertain = true;
     [Range(0f, 1f)] public float desaturateStrength = 0.50f;
     public Color blueColor = new Color(0.45f, 0.62f, 0.94f, 1f); // calmer blue
-    public Color redColor = new Color(0.94f, 0.45f, 0.45f, 1f); // calmer red
+    public Color redColor = new Color(0.94f, 0.45f, 0.45f, 1f);  // calmer red
 
     // --- internals ---
     MLP mlp;
@@ -51,6 +51,10 @@ public class ActivationExplorer : MonoBehaviour
     bool auto = false;
     float timer = 0f;
     const float autoDt = 0.05f;
+
+    // --- Gamification ---
+    ObjectiveTracker _tracker;
+    float elapsed = 0f;
 
     void Start()
     {
@@ -71,6 +75,9 @@ public class ActivationExplorer : MonoBehaviour
             lr = sldLR.value
         };
 
+        // Gamification: find tracker in scene (Gamification GO)
+        _tracker = UnityEngine.Object.FindFirstObjectByType<ObjectiveTracker>();
+
         // UI hooks
         if (btnStep) btnStep.onClick.AddListener(Step);
         if (tglAuto) tglAuto.onValueChanged.AddListener(v => auto = v);
@@ -90,7 +97,7 @@ public class ActivationExplorer : MonoBehaviour
         // Points
         SpawnPoints();
 
-        // Prime optional mini-plot & explainer visibility
+        // Prime mini-plot & explainer visibility
         actCurve?.SetAct((Act)drpActivation.value);
         if (explainer) explainer.gameObject.SetActive(tglBeginner ? tglBeginner.isOn : true);
 
@@ -98,14 +105,23 @@ public class ActivationExplorer : MonoBehaviour
         Redraw();
         UpdateLossText();
         UpdatePointStyles();
+
+        // Initial metrics → tracker
+        ReportMetricsToTracker();
     }
 
     void Update()
     {
+        elapsed += Time.deltaTime;
+
         if (auto)
         {
             timer += Time.deltaTime;
-            if (timer >= autoDt) { timer = 0f; Step(); }
+            if (timer >= autoDt)
+            {
+                timer = 0f;
+                Step();
+            }
         }
 
         // Handy shortcuts
@@ -124,6 +140,16 @@ public class ActivationExplorer : MonoBehaviour
         Redraw();
         UpdateLossText();
         UpdatePointStyles();
+
+        // Gamification: user tried an activation variant
+        if (_tracker == null) _tracker = UnityEngine.Object.FindFirstObjectByType<ObjectiveTracker>();
+        if (_tracker != null)
+        {
+            string name = ((Act)idx).ToString(); // "Tanh", "ReLU", "Sigmoid"
+            _tracker.ReportTriedVariant(name);
+        }
+
+        ReportMetricsToTracker();
     }
 
     void Step()
@@ -145,9 +171,14 @@ public class ActivationExplorer : MonoBehaviour
             mlp.StepSGD(N);
         }
 
-        if (txtLoss) txtLoss.text = $"Loss: {loss:F4} | LR: {mlp.lr:F4} | Act: {mlp.activation}";
+        if (txtLoss)
+            txtLoss.text = $"Loss: {loss:F4} | LR: {mlp.lr:F4} | Act: {mlp.activation}";
+
         Redraw();
-        UpdatePointStyles();   // refresh alpha/desaturation with new predictions
+        UpdatePointStyles();
+
+        // Gamification: each training step is meaningful for accuracy/F
+        ReportMetricsToTracker();
     }
 
     void Redraw()
@@ -184,7 +215,8 @@ public class ActivationExplorer : MonoBehaviour
     void UpdateLossText()
     {
         var (loss, _) = mlp.Forward(X, Y);
-        if (txtLoss) txtLoss.text = $"Loss: {loss:F4} | LR: {mlp.lr:F4} | Act: {mlp.activation}";
+        if (txtLoss)
+            txtLoss.text = $"Loss: {loss:F4} | LR: {mlp.lr:F4} | Act: {mlp.activation}";
     }
 
     void ResetModel()
@@ -199,16 +231,21 @@ public class ActivationExplorer : MonoBehaviour
         Redraw();
         UpdateLossText();
         UpdatePointStyles();
+
+        ReportMetricsToTracker();
     }
 
     void ShuffleData()
     {
         dataset.ReseedAndGenerateClean();
-        X = dataset.XMatrix(); Y = dataset.YMatrix();
+        X = dataset.XMatrix();
+        Y = dataset.YMatrix();
         SpawnPoints();
         Redraw();
         UpdateLossText();
         UpdatePointStyles();
+
+        ReportMetricsToTracker();
     }
 
     void SpawnPoints()
@@ -290,5 +327,116 @@ public class ActivationExplorer : MonoBehaviour
             Yb[r, 0] = dataset.labels[i];
         }
         return (Xb, Yb);
+    }
+
+    // ---------- Metrics: Accuracy + Faithfulness ----------
+
+    float ComputeAccuracy()
+    {
+        if (mlp == null || X == null || Y == null) return 0f;
+        var (_, P) = mlp.Forward(X, Y);
+        int n = P.GetLength(0), correct = 0;
+        for (int i = 0; i < n; i++)
+        {
+            bool pred = P[i, 0] >= 0.5f;
+            bool lab = Y[i, 0] >= 0.5f;
+            if (pred == lab) correct++;
+        }
+        return n > 0 ? (float)correct / n : 0f;
+    }
+
+    // Same perturbation-based stability metric as S1/S2
+    float ComputeFaithfulness()
+    {
+        if (mlp == null || X == null || Y == null) return 0f;
+        int n = X.GetLength(0);
+        if (n == 0) return 0f;
+
+        // bounds
+        float minX = float.PositiveInfinity, maxX = float.NegativeInfinity;
+        float minY = float.PositiveInfinity, maxY = float.NegativeInfinity;
+        for (int i = 0; i < n; i++)
+        {
+            float px = X[i, 0];
+            float py = X[i, 1];
+            if (px < minX) minX = px; if (px > maxX) maxX = px;
+            if (py < minY) minY = py; if (py > maxY) maxY = py;
+        }
+        float scaleX = Mathf.Max(1e-4f, maxX - minX);
+        float scaleY = Mathf.Max(1e-4f, maxY - minY);
+        float sigmaX = 0.05f * scaleX;
+        float sigmaY = 0.05f * scaleY;
+
+        int maxSamples = Mathf.Min(200, n);
+        int kPerturb = 3;
+
+        float sumStability = 0f;
+        int stableCount = 0;
+
+        for (int si = 0; si < maxSamples; si++)
+        {
+            int i = si * n / maxSamples;
+
+            float[,] Xi = new float[1, 2] { { X[i, 0], X[i, 1] } };
+            float[,] Yi = new float[1, 1] { { Y[i, 0] } };
+            var (_, Pbase) = mlp.Forward(Xi, Yi);
+            float p = Pbase[0, 0];
+            bool pred = p >= 0.5f;
+            bool lab = Y[i, 0] >= 0.5f;
+            if (pred != lab) continue; // only trust stable correctness
+
+            float deltaSum = 0f;
+
+            for (int k = 0; k < kPerturb; k++)
+            {
+                float dx = NextGaussian() * sigmaX;
+                float dy = NextGaussian() * sigmaY;
+                float nx = Mathf.Clamp(X[i, 0] + dx, minX, maxX);
+                float ny = Mathf.Clamp(X[i, 1] + dy, minY, maxY);
+
+                float[,] Xp = new float[1, 2] { { nx, ny } };
+                var (_, Pp) = mlp.Forward(Xp, Yi);
+                float pp = Pp[0, 0];
+
+                deltaSum += Mathf.Abs(pp - p);
+            }
+
+            float avgDelta = deltaSum / kPerturb;
+            float stability = Mathf.Clamp01(1f - avgDelta);
+            sumStability += stability;
+            stableCount++;
+        }
+
+        if (stableCount == 0) return 0f;
+        return sumStability / stableCount;
+    }
+
+    float NextGaussian()
+    {
+        double u1 = 1.0 - rnd.NextDouble();
+        double u2 = 1.0 - rnd.NextDouble();
+        double randStdNormal =
+            Math.Sqrt(-2.0 * Math.Log(u1)) * Math.Sin(2.0 * Math.PI * u2);
+        return (float)randStdNormal;
+    }
+
+    void ReportMetricsToTracker()
+    {
+        if (_tracker == null) _tracker = UnityEngine.Object.FindFirstObjectByType<ObjectiveTracker>();
+        if (_tracker == null) return;
+
+        float acc = ComputeAccuracy();
+        float F = ComputeFaithfulness();
+
+        _tracker.ReportAccuracy(acc);      // drives S3_ACC090
+        _tracker.ReportFaithfulness(F);    // logged for thesis / cross-scene
+    }
+
+    // ---------- Public hook for "Finish under 180s" ----------
+    // Wire this from your "Next"/"Continue" button in S3.
+    public void OnSceneCompleted()
+    {
+        if (_tracker == null) _tracker = UnityEngine.Object.FindFirstObjectByType<ObjectiveTracker>();
+        _tracker?.ReportSceneFinish();
     }
 }
