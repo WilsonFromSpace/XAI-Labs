@@ -1,8 +1,10 @@
 ﻿using UnityEngine;
 using UnityEngine.UI;
+using UnityEngine.SceneManagement;
 using TMPro;
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 
 public class ActivationExplorer : MonoBehaviour
 {
@@ -55,9 +57,16 @@ public class ActivationExplorer : MonoBehaviour
     // --- Gamification ---
     ObjectiveTracker _tracker;
     float elapsed = 0f;
+    int stepCount = 0;
 
     void Start()
     {
+        // Log scene start
+        EventLogger.Instance?.LogEvent(
+            eventType: "SceneStart",
+            key: SceneManager.GetActiveScene().name
+        );
+
         // Dataset: runtime clone + randomized pose for each run
         dataset = dataset ? ScriptableObject.Instantiate(dataset)
                           : ScriptableObject.CreateInstance<Dataset2D>();
@@ -78,21 +87,76 @@ public class ActivationExplorer : MonoBehaviour
         // Gamification: find tracker in scene (Gamification GO)
         _tracker = UnityEngine.Object.FindFirstObjectByType<ObjectiveTracker>();
 
-        // UI hooks
-        if (btnStep) btnStep.onClick.AddListener(Step);
-        if (tglAuto) tglAuto.onValueChanged.AddListener(v => auto = v);
-        if (tglMinibatch) tglMinibatch.onValueChanged.AddListener(_ => { });
-        if (sldBatch) sldBatch.onValueChanged.AddListener(_ => { });
-        if (sldLR) sldLR.onValueChanged.AddListener(v => mlp.lr = v);
-        if (drpActivation) drpActivation.onValueChanged.AddListener(OnActivationChanged);
-        if (btnReset) btnReset.onClick.AddListener(ResetModel);
-        if (btnShuffle) btnShuffle.onClick.AddListener(ShuffleData);
-        if (tglShowBoundary) tglShowBoundary.onValueChanged.AddListener(_ => Redraw());
+        // --- UI hooks ---
+
+        if (btnStep)
+            btnStep.onClick.AddListener(() =>
+            {
+                Step();
+                _tracker?.ReportAction("step_train");
+                EventLogger.Instance?.LogEvent("Action", key: "step_train");
+            });
+
+        if (tglAuto)
+            tglAuto.onValueChanged.AddListener(v =>
+            {
+                auto = v;
+                EventLogger.Instance?.LogEvent(
+                    eventType: "ParamChange",
+                    key: "auto_mode",
+                    value: v ? "on" : "off"
+                );
+            });
+
+        if (tglMinibatch)
+            tglMinibatch.onValueChanged.AddListener(v =>
+            {
+                EventLogger.Instance?.LogEvent(
+                    eventType: "ParamChange",
+                    key: "minibatch_enabled",
+                    value: v ? "true" : "false"
+                );
+            });
+
+        if (sldBatch)
+            sldBatch.onValueChanged.AddListener(v =>
+            {
+                EventLogger.Instance?.LogEvent(
+                    eventType: "ParamChange",
+                    key: "batch_size",
+                    value: ((int)v).ToString()
+                );
+            });
+
+        if (sldLR)
+            sldLR.onValueChanged.AddListener(v =>
+            {
+                mlp.lr = v;
+                EventLogger.Instance?.LogEvent(
+                    eventType: "ParamChange",
+                    key: "learning_rate",
+                    value: v.ToString("F4", CultureInfo.InvariantCulture)
+                );
+            });
+
+        if (drpActivation)
+            drpActivation.onValueChanged.AddListener(OnActivationChanged);
+
+        if (btnReset)
+            btnReset.onClick.AddListener(ResetModel);
+
+        if (btnShuffle)
+            btnShuffle.onClick.AddListener(ShuffleData);
+
+        if (tglShowBoundary)
+            tglShowBoundary.onValueChanged.AddListener(_ => Redraw());
 
         // Beginner mode toggle
-        if (tglBeginner) tglBeginner.onValueChanged.AddListener(v => {
-            if (explainer) explainer.gameObject.SetActive(v);
-        });
+        if (tglBeginner)
+            tglBeginner.onValueChanged.AddListener(v =>
+            {
+                if (explainer) explainer.gameObject.SetActive(v);
+            });
 
         // Points
         SpawnPoints();
@@ -106,7 +170,7 @@ public class ActivationExplorer : MonoBehaviour
         UpdateLossText();
         UpdatePointStyles();
 
-        // Initial metrics → tracker
+        // Initial metrics → tracker + log
         ReportMetricsToTracker();
     }
 
@@ -121,16 +185,18 @@ public class ActivationExplorer : MonoBehaviour
             {
                 timer = 0f;
                 Step();
+                _tracker?.ReportAction("step_train_auto");
+                EventLogger.Instance?.LogEvent("Action", key: "step_train_auto");
             }
         }
 
-        // Handy shortcuts
+        // Handy shortcuts (dev convenience)
         if (Input.GetKeyDown(KeyCode.Space)) Step();
-        if (Input.GetKeyDown(KeyCode.A)) if (tglAuto) tglAuto.isOn = !tglAuto.isOn;
+        if (Input.GetKeyDown(KeyCode.A) && tglAuto) tglAuto.isOn = !tglAuto.isOn;
         if (Input.GetKeyDown(KeyCode.R)) ResetModel();
         if (Input.GetKeyDown(KeyCode.S)) ShuffleData();
-        if (Input.GetKeyDown(KeyCode.B)) if (tglShowBoundary) tglShowBoundary.isOn = !tglShowBoundary.isOn;
-        if (Input.GetKeyDown(KeyCode.H)) if (tglBeginner) tglBeginner.isOn = !tglBeginner.isOn;
+        if (Input.GetKeyDown(KeyCode.B) && tglShowBoundary) tglShowBoundary.isOn = !tglShowBoundary.isOn;
+        if (Input.GetKeyDown(KeyCode.H) && tglBeginner) tglBeginner.isOn = !tglBeginner.isOn;
     }
 
     void OnActivationChanged(int idx)
@@ -141,13 +207,19 @@ public class ActivationExplorer : MonoBehaviour
         UpdateLossText();
         UpdatePointStyles();
 
-        // Gamification: user tried an activation variant
         if (_tracker == null) _tracker = UnityEngine.Object.FindFirstObjectByType<ObjectiveTracker>();
         if (_tracker != null)
         {
-            string name = ((Act)idx).ToString(); // "Tanh", "ReLU", "Sigmoid"
+            string name = ((Act)idx).ToString();
             _tracker.ReportTriedVariant(name);
         }
+
+        // Log activation choice
+        EventLogger.Instance?.LogEvent(
+            eventType: "ParamChange",
+            key: "activation",
+            value: ((Act)idx).ToString()
+        );
 
         ReportMetricsToTracker();
     }
@@ -177,7 +249,15 @@ public class ActivationExplorer : MonoBehaviour
         Redraw();
         UpdatePointStyles();
 
-        // Gamification: each training step is meaningful for accuracy/F
+        stepCount++;
+
+        // Log this training step
+        EventLogger.Instance?.LogEvent(
+            eventType: "StepTrain",
+            key: "step",
+            value: stepCount.ToString()
+        );
+
         ReportMetricsToTracker();
     }
 
@@ -186,7 +266,7 @@ public class ActivationExplorer : MonoBehaviour
         // Per-neuron geometry
         hinges?.Render(mlp, dataset);
 
-        // 0.5 decision curve (prefer crisp GL curve; fall back to sampler if provided)
+        // 0.5 decision curve
         bool showBoundary = tglShowBoundary ? tglShowBoundary.isOn : true;
 
         if (showBoundary && boundaryCurve)
@@ -233,6 +313,8 @@ public class ActivationExplorer : MonoBehaviour
         UpdatePointStyles();
 
         ReportMetricsToTracker();
+
+        EventLogger.Instance?.LogEvent("ResetPressed");
     }
 
     void ShuffleData()
@@ -246,6 +328,8 @@ public class ActivationExplorer : MonoBehaviour
         UpdatePointStyles();
 
         ReportMetricsToTracker();
+
+        EventLogger.Instance?.LogEvent("ShuffleData");
     }
 
     void SpawnPoints()
@@ -258,7 +342,6 @@ public class ActivationExplorer : MonoBehaviour
         {
             var go = Instantiate(pointPrefab, dataset.points[i], Quaternion.identity, pointsParent);
             var sr = go.GetComponent<SpriteRenderer>();
-            // initial soft color (will be refined by UpdatePointStyles)
             sr.color = dataset.labels[i] > 0.5f ? redColor : blueColor;
             sr.sortingOrder = 10;
             go.transform.localScale = Vector3.one * dotScale;
@@ -266,7 +349,6 @@ public class ActivationExplorer : MonoBehaviour
         }
     }
 
-    // --- style refresh for dots ---
     void UpdatePointStyles()
     {
         if (pointGOs.Count == 0) return;
@@ -279,39 +361,36 @@ public class ActivationExplorer : MonoBehaviour
         {
             var sr = pointGOs[i].GetComponent<SpriteRenderer>();
             bool isRed = dataset.labels[i] > 0.5f;
-
             Color baseCol = isRed ? redColor : blueColor;
 
-            // confidence (0..1): 0 uncertain, 1 very sure
             float conf = 1f;
-            if (P != null) conf = Mathf.Clamp01(Mathf.Abs(P[i, 0] - 0.5f) * 2f);
+            if (P != null)
+                conf = Mathf.Clamp01(Mathf.Abs(P[i, 0] - 0.5f) * 2f);
 
-            // alpha
             float a = fadeByConfidence ? Mathf.Lerp(alphaMin, alphaMax, conf) : alphaMax;
 
-            // desaturate towards gray when uncertain
             if (desaturateUncertain)
             {
                 float g = baseCol.grayscale;
                 Color gray = new Color(g, g, g, 1f);
-                float t = desaturateStrength * (1f - conf); // more desat when uncertain
+                float t = desaturateStrength * (1f - conf);
                 baseCol = Color.Lerp(baseCol, gray, t);
             }
 
             baseCol.a = a;
             sr.color = baseCol;
 
-            // size
             pointGOs[i].transform.localScale = Vector3.one * dotScale;
         }
     }
 
-    // --- minibatch helpers ---
     int[] SampleBatch(int bs, int total)
     {
         var set = new HashSet<int>();
         while (set.Count < bs) set.Add(rnd.Next(total));
-        var arr = new int[bs]; int k = 0; foreach (var i in set) arr[k++] = i;
+        var arr = new int[bs];
+        int k = 0;
+        foreach (var i in set) arr[k++] = i;
         return arr;
     }
 
@@ -345,14 +424,12 @@ public class ActivationExplorer : MonoBehaviour
         return n > 0 ? (float)correct / n : 0f;
     }
 
-    // Same perturbation-based stability metric as S1/S2
     float ComputeFaithfulness()
     {
         if (mlp == null || X == null || Y == null) return 0f;
         int n = X.GetLength(0);
         if (n == 0) return 0f;
 
-        // bounds
         float minX = float.PositiveInfinity, maxX = float.NegativeInfinity;
         float minY = float.PositiveInfinity, maxY = float.NegativeInfinity;
         for (int i = 0; i < n; i++)
@@ -383,7 +460,7 @@ public class ActivationExplorer : MonoBehaviour
             float p = Pbase[0, 0];
             bool pred = p >= 0.5f;
             bool lab = Y[i, 0] >= 0.5f;
-            if (pred != lab) continue; // only trust stable correctness
+            if (pred != lab) continue;
 
             float deltaSum = 0f;
 
@@ -428,15 +505,39 @@ public class ActivationExplorer : MonoBehaviour
         float acc = ComputeAccuracy();
         float F = ComputeFaithfulness();
 
-        _tracker.ReportAccuracy(acc);      // drives S3_ACC090
-        _tracker.ReportFaithfulness(F);    // logged for thesis / cross-scene
+        _tracker.ReportAccuracy(acc);
+        _tracker.ReportFaithfulness(F);
+
+        // Log F snapshot for thesis traceability
+        EventLogger.Instance?.LogEvent(
+            eventType: "FaithfulnessUpdated",
+            key: SceneManager.GetActiveScene().name,
+            fScore: F
+        );
     }
 
-    // ---------- Public hook for "Finish under 180s" ----------
+    // ---------- Public hook for "Finish under 180s" / mission complete ----------
     // Wire this from your "Next"/"Continue" button in S3.
     public void OnSceneCompleted()
     {
         if (_tracker == null) _tracker = UnityEngine.Object.FindFirstObjectByType<ObjectiveTracker>();
+
         _tracker?.ReportSceneFinish();
+
+        string sceneId = SceneManager.GetActiveScene().name;
+        float finalF = ComputeFaithfulness();
+
+        EventLogger.Instance?.LogEvent(
+            eventType: "RunCompleted",
+            key: sceneId,
+            value: "success",
+            fScore: finalF
+        );
+
+        CrossSceneComparisonManager.Instance?.RegisterRun(
+            sceneId: sceneId,
+            fScore: finalF,
+            success: true
+        );
     }
 }

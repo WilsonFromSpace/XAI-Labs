@@ -14,9 +14,9 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   objectiveId: S4_TUNE3
   sceneName: S4_LossThresholds
-  title: "Adjust decision threshold 3\xD7"
+  title: Adjust decision threshold 10
   type: 3
-  threshold: 3
+  threshold: 0.8
   actionKey: 
   actionTarget: 10
   onActivateStory: 

@@ -1,6 +1,7 @@
 using UnityEngine;
 using UnityEngine.UI;
 using TMPro;
+using UnityEngine.SceneManagement;
 
 public class S1GamificationBridge : MonoBehaviour
 {
@@ -18,7 +19,7 @@ public class S1GamificationBridge : MonoBehaviour
         // Auto-find tracker if not assigned
         if (!tracker) tracker = Object.FindFirstObjectByType<ObjectiveTracker>();
 
-        // Wire activation dropdown (TryVariantsCount in other scenes, still useful here)
+        // Wire activation dropdown
         if (activationDropdown)
             activationDropdown.onValueChanged.AddListener(OnActivationChanged);
 
@@ -26,7 +27,7 @@ public class S1GamificationBridge : MonoBehaviour
         if (stepButton)
             stepButton.onClick.AddListener(() => ReportWeightAdjust());
 
-        // Wire weight sliders so each change counts as a weight_adjust
+        // Wire weight sliders
         if (weightSliders != null)
         {
             foreach (var s in weightSliders)
@@ -36,7 +37,7 @@ public class S1GamificationBridge : MonoBehaviour
             }
         }
 
-        // Optional: if you have a dedicated Win/Complete button in the UI
+        // Optional: Win/Complete button
         if (winButton)
             winButton.onClick.AddListener(ReportSceneFinished);
     }
@@ -46,21 +47,49 @@ public class S1GamificationBridge : MonoBehaviour
     public void ReportFaithfulness(float F01)
     {
         tracker?.ReportFaithfulness(Mathf.Clamp01(F01));
+
+        EventLogger.Instance?.LogEvent(
+            eventType: "FaithfulnessUpdated",
+            fScore: Mathf.Clamp01(F01)
+        );
     }
 
     public void ReportSceneFinished()
     {
+        if (!tracker)
+            tracker = Object.FindFirstObjectByType<ObjectiveTracker>();
+
         tracker?.ReportSceneFinish();
+
+        string sceneId = SceneManager.GetActiveScene().name;
+
+        // Log run completion (no hard F binding here; F is tracked separately)
+        EventLogger.Instance?.LogEvent(
+            eventType: "RunCompleted",
+            key: sceneId,
+            value: "success"
+        );
+
+        // Cross-scene summary entry (F unknown -> null)
+        CrossSceneComparisonManager.Instance?.RegisterRun(
+            sceneId: sceneId,
+            fScore: null,
+            success: true
+        );
     }
 
     public void ReportWeightAdjust()
     {
         tracker?.ReportAction("weight_adjust");
+
+        EventLogger.Instance?.LogEvent(
+            eventType: "ParamChange",
+            key: "weight_adjust"
+        );
     }
 
     public void OnActivationChanged(int index)
     {
-        // If your activation enum matches 0=Tanh,1=ReLU,2=Sigmoid adjust the names as you wish
         string name = index switch
         {
             0 => "Tanh",
@@ -68,9 +97,13 @@ public class S1GamificationBridge : MonoBehaviour
             2 => "Sigmoid",
             _ => $"Act_{index}"
         };
+
         tracker?.ReportTriedVariant(name);
 
-        // You can also re-check faithfulness right after activation changes by calling ReportFaithfulness(...)
-        // from wherever you compute accuracy/F.
+        EventLogger.Instance?.LogEvent(
+            eventType: "ParamChange",
+            key: "activation",
+            value: name
+        );
     }
 }

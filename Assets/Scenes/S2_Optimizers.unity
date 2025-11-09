@@ -5687,6 +5687,18 @@ MonoBehaviour:
           m_StringArgument: 
           m_BoolArgument: 0
         m_CallState: 2
+      - m_Target: {fileID: 231576654}
+        m_TargetAssemblyTypeName: OptimizersExplorer, Assembly-CSharp
+        m_MethodName: OnSceneCompleted
+        m_Mode: 1
+        m_Arguments:
+          m_ObjectArgument: {fileID: 0}
+          m_ObjectArgumentAssemblyTypeName: UnityEngine.Object, UnityEngine
+          m_IntArgument: 0
+          m_FloatArgument: 0
+          m_StringArgument: 
+          m_BoolArgument: 0
+        m_CallState: 2
 --- !u!114 &1246675210
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -9074,12 +9086,20 @@ PrefabInstance:
       value: 
       objectReference: {fileID: 0}
     - target: {fileID: 2788772114577812121, guid: 31dd7636dd3f4004e84a811d5e5708ba, type: 3}
+      propertyPath: m_margin.w
+      value: 3.645874
+      objectReference: {fileID: 0}
+    - target: {fileID: 2788772114577812121, guid: 31dd7636dd3f4004e84a811d5e5708ba, type: 3}
       propertyPath: m_margin.x
-      value: -358.48065
+      value: -4.836426
+      objectReference: {fileID: 0}
+    - target: {fileID: 2788772114577812121, guid: 31dd7636dd3f4004e84a811d5e5708ba, type: 3}
+      propertyPath: m_margin.y
+      value: 0
       objectReference: {fileID: 0}
     - target: {fileID: 2788772114577812121, guid: 31dd7636dd3f4004e84a811d5e5708ba, type: 3}
       propertyPath: m_margin.z
-      value: -358.4806
+      value: -1.1906738
       objectReference: {fileID: 0}
     - target: {fileID: 4582812909317944938, guid: 31dd7636dd3f4004e84a811d5e5708ba, type: 3}
       propertyPath: m_LocalPosition.x
@@ -9123,7 +9143,7 @@ PrefabInstance:
       objectReference: {fileID: 0}
     - target: {fileID: 7946121184300895467, guid: 31dd7636dd3f4004e84a811d5e5708ba, type: 3}
       propertyPath: m_SizeDelta.x
-      value: 1368.1284
+      value: 1266.0454
       objectReference: {fileID: 0}
     - target: {fileID: 7946121184300895467, guid: 31dd7636dd3f4004e84a811d5e5708ba, type: 3}
       propertyPath: m_SizeDelta.y
@@ -9131,7 +9151,7 @@ PrefabInstance:
       objectReference: {fileID: 0}
     - target: {fileID: 7946121184300895467, guid: 31dd7636dd3f4004e84a811d5e5708ba, type: 3}
       propertyPath: m_AnchoredPosition.x
-      value: 0
+      value: 3.6457
       objectReference: {fileID: 0}
     - target: {fileID: 7946121184300895467, guid: 31dd7636dd3f4004e84a811d5e5708ba, type: 3}
       propertyPath: m_AnchoredPosition.y
@@ -9143,7 +9163,7 @@ PrefabInstance:
       objectReference: {fileID: 0}
     - target: {fileID: 8390948856604269307, guid: 31dd7636dd3f4004e84a811d5e5708ba, type: 3}
       propertyPath: m_SizeDelta.x
-      value: 640
+      value: 1266
       objectReference: {fileID: 0}
     - target: {fileID: 8390948856604269307, guid: 31dd7636dd3f4004e84a811d5e5708ba, type: 3}
       propertyPath: m_SizeDelta.y
@@ -9151,7 +9171,7 @@ PrefabInstance:
       objectReference: {fileID: 0}
     - target: {fileID: 8390948856604269307, guid: 31dd7636dd3f4004e84a811d5e5708ba, type: 3}
       propertyPath: m_AnchoredPosition.x
-      value: 0
+      value: -0.001358
       objectReference: {fileID: 0}
     - target: {fileID: 8390948856604269307, guid: 31dd7636dd3f4004e84a811d5e5708ba, type: 3}
       propertyPath: m_AnchoredPosition.y

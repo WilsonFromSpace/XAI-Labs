@@ -14,10 +14,10 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   objectiveId: S2_TRY3
   sceneName: S2_Optimizers
-  title: Try 3 optimizers
+  title: Try 25 optimizers
   type: 4
-  threshold: 3
+  threshold: 0.8
   actionKey: 
-  actionTarget: 10
+  actionTarget: 25
   onActivateStory: "Entering Sector S2 \u2014 map descent trajectories."
   onCompleteToast: Optimizer survey complete.

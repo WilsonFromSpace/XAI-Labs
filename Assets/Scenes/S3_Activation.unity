@@ -3126,6 +3126,18 @@ MonoBehaviour:
           m_StringArgument: 
           m_BoolArgument: 0
         m_CallState: 2
+      - m_Target: {fileID: 561046443}
+        m_TargetAssemblyTypeName: ActivationExplorer, Assembly-CSharp
+        m_MethodName: OnSceneCompleted
+        m_Mode: 1
+        m_Arguments:
+          m_ObjectArgument: {fileID: 0}
+          m_ObjectArgumentAssemblyTypeName: UnityEngine.Object, UnityEngine
+          m_IntArgument: 0
+          m_FloatArgument: 0
+          m_StringArgument: 
+          m_BoolArgument: 0
+        m_CallState: 2
 --- !u!114 &716017531
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -4344,23 +4356,27 @@ PrefabInstance:
       objectReference: {fileID: 0}
     - target: {fileID: 2788772114577812121, guid: 31dd7636dd3f4004e84a811d5e5708ba, type: 3}
       propertyPath: m_margin.x
-      value: -358.48065
+      value: -3.0133364
+      objectReference: {fileID: 0}
+    - target: {fileID: 2788772114577812121, guid: 31dd7636dd3f4004e84a811d5e5708ba, type: 3}
+      propertyPath: m_margin.y
+      value: 6.0763474
       objectReference: {fileID: 0}
     - target: {fileID: 2788772114577812121, guid: 31dd7636dd3f4004e84a811d5e5708ba, type: 3}
       propertyPath: m_margin.z
-      value: -358.4806
+      value: 3.0627441
       objectReference: {fileID: 0}
     - target: {fileID: 4582812909317944938, guid: 31dd7636dd3f4004e84a811d5e5708ba, type: 3}
       propertyPath: m_LocalScale.x
-      value: 0.83333325
+      value: 1
       objectReference: {fileID: 0}
     - target: {fileID: 4582812909317944938, guid: 31dd7636dd3f4004e84a811d5e5708ba, type: 3}
       propertyPath: m_LocalScale.y
-      value: 0.83333325
+      value: 1
       objectReference: {fileID: 0}
     - target: {fileID: 4582812909317944938, guid: 31dd7636dd3f4004e84a811d5e5708ba, type: 3}
       propertyPath: m_LocalScale.z
-      value: 0.83333325
+      value: 1
       objectReference: {fileID: 0}
     - target: {fileID: 4582812909317944938, guid: 31dd7636dd3f4004e84a811d5e5708ba, type: 3}
       propertyPath: m_LocalPosition.x
@@ -4368,7 +4384,7 @@ PrefabInstance:
       objectReference: {fileID: 0}
     - target: {fileID: 4582812909317944938, guid: 31dd7636dd3f4004e84a811d5e5708ba, type: 3}
       propertyPath: m_LocalPosition.y
-      value: -59.720707
+      value: -180
       objectReference: {fileID: 0}
     - target: {fileID: 4582812909317944938, guid: 31dd7636dd3f4004e84a811d5e5708ba, type: 3}
       propertyPath: m_LocalPosition.z
@@ -4404,7 +4420,7 @@ PrefabInstance:
       objectReference: {fileID: 0}
     - target: {fileID: 7946121184300895467, guid: 31dd7636dd3f4004e84a811d5e5708ba, type: 3}
       propertyPath: m_SizeDelta.x
-      value: 1368.1284
+      value: 1161.532
       objectReference: {fileID: 0}
     - target: {fileID: 7946121184300895467, guid: 31dd7636dd3f4004e84a811d5e5708ba, type: 3}
       propertyPath: m_SizeDelta.y
@@ -4412,7 +4428,7 @@ PrefabInstance:
       objectReference: {fileID: 0}
     - target: {fileID: 7946121184300895467, guid: 31dd7636dd3f4004e84a811d5e5708ba, type: 3}
       propertyPath: m_AnchoredPosition.x
-      value: 0
+      value: 103.29813
       objectReference: {fileID: 0}
     - target: {fileID: 7946121184300895467, guid: 31dd7636dd3f4004e84a811d5e5708ba, type: 3}
       propertyPath: m_AnchoredPosition.y
@@ -4424,19 +4440,19 @@ PrefabInstance:
       objectReference: {fileID: 0}
     - target: {fileID: 8390948856604269307, guid: 31dd7636dd3f4004e84a811d5e5708ba, type: 3}
       propertyPath: m_SizeDelta.x
-      value: 640
+      value: 1161.5
       objectReference: {fileID: 0}
     - target: {fileID: 8390948856604269307, guid: 31dd7636dd3f4004e84a811d5e5708ba, type: 3}
       propertyPath: m_SizeDelta.y
-      value: 200
+      value: 191.89
       objectReference: {fileID: 0}
     - target: {fileID: 8390948856604269307, guid: 31dd7636dd3f4004e84a811d5e5708ba, type: 3}
       propertyPath: m_AnchoredPosition.x
-      value: 0
+      value: 0.0004425
       objectReference: {fileID: 0}
     - target: {fileID: 8390948856604269307, guid: 31dd7636dd3f4004e84a811d5e5708ba, type: 3}
       propertyPath: m_AnchoredPosition.y
-      value: 0
+      value: 4.0535
       objectReference: {fileID: 0}
     m_RemovedComponents: []
     m_RemovedGameObjects: []
@@ -7159,5 +7175,5 @@ SceneRoots:
   - {fileID: 894019567}
   - {fileID: 1695962977}
   - {fileID: 1896924273}
-  - {fileID: 561046444}
   - {fileID: 2040450753}
+  - {fileID: 561046444}

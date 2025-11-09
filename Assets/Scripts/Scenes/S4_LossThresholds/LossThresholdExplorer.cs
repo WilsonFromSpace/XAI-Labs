@@ -1,8 +1,10 @@
 using UnityEngine;
 using UnityEngine.UI;
+using UnityEngine.SceneManagement;
 using TMPro;
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 
 public class LossThresholdExplorer : MonoBehaviour
 {
@@ -38,12 +40,20 @@ public class LossThresholdExplorer : MonoBehaviour
     bool auto = false;
     float timer = 0f;
     const float dt = 0.05f;
+    int stepCount = 0;
 
     // Gamification
     ObjectiveTracker _tracker;
 
     void Start()
     {
+        // --- Log scene start ---
+        EventLogger.Instance?.LogEvent(
+            eventType: "SceneStart",
+            key: SceneManager.GetActiveScene().name
+        );
+
+        // dataset clone & init
         dataset = dataset ? ScriptableObject.Instantiate(dataset) : ScriptableObject.CreateInstance<Dataset2D>();
         if (dataset.points == null || dataset.points.Length == 0)
             dataset.GenerateBlobs();
@@ -51,6 +61,7 @@ public class LossThresholdExplorer : MonoBehaviour
         X = dataset.XMatrix();
         Y = dataset.YMatrix();
 
+        // model init
         mlp = new MLP(2, 3, 1, seed: UnityEngine.Random.Range(1, 1_000_000))
         {
             lossType = LossType.BCE,
@@ -59,54 +70,112 @@ public class LossThresholdExplorer : MonoBehaviour
 
         SpawnPoints();
 
-        // cache tracker (if present)
+        // tracker
         _tracker = UnityEngine.Object.FindFirstObjectByType<ObjectiveTracker>();
 
-        // UI hooks
-        btnStep.onClick.AddListener(Step);
-        tglAuto.onValueChanged.AddListener(v => auto = v);
-        tglMinibatch.onValueChanged.AddListener(_ => { });
-        sldBatch.onValueChanged.AddListener(_ => { });
-        sldLR.onValueChanged.AddListener(v => mlp.lr = v);
+        // --- UI hooks ---
+
+        btnStep.onClick.AddListener(() =>
+        {
+            Step();
+            _tracker?.ReportAction("step_train");
+            EventLogger.Instance?.LogEvent("Action", key: "step_train");
+        });
+
+        tglAuto.onValueChanged.AddListener(v =>
+        {
+            auto = v;
+            EventLogger.Instance?.LogEvent(
+                eventType: "ParamChange",
+                key: "auto_mode",
+                value: v ? "on" : "off"
+            );
+        });
+
+        tglMinibatch.onValueChanged.AddListener(v =>
+        {
+            EventLogger.Instance?.LogEvent(
+                eventType: "ParamChange",
+                key: "minibatch_enabled",
+                value: v ? "true" : "false"
+            );
+        });
+
+        sldBatch.onValueChanged.AddListener(v =>
+        {
+            EventLogger.Instance?.LogEvent(
+                eventType: "ParamChange",
+                key: "batch_size",
+                value: ((int)v).ToString()
+            );
+        });
+
+        sldLR.onValueChanged.AddListener(v =>
+        {
+            mlp.lr = v;
+            EventLogger.Instance?.LogEvent(
+                eventType: "ParamChange",
+                key: "learning_rate",
+                value: v.ToString("F4", CultureInfo.InvariantCulture)
+            );
+        });
+
         drpLossType.onValueChanged.AddListener(OnLossChanged);
-        // threshold slider: refresh + gamification event
+
         sldThreshold.onValueChanged.AddListener(OnThresholdSliderChanged);
+
         btnReset.onClick.AddListener(ResetAll);
         btnShuffle.onClick.AddListener(ShuffleData);
 
-        RefreshAll();               // computes metrics & draws
-        // initial metrics -> tracker
+        // initial draw & metrics
+        RefreshAll();
         ReportMetricsToTrackerFromCurrent();
+        LogFaithfulnessSnapshot();
     }
 
     void Update()
     {
         if (!auto) return;
+
         timer += Time.deltaTime;
         if (timer >= dt)
         {
             timer = 0f;
             Step();
+            _tracker?.ReportAction("step_train_auto");
+            EventLogger.Instance?.LogEvent("Action", key: "step_train_auto");
         }
     }
+
+    // ---------------- UI / Core Logic ----------------
 
     void OnLossChanged(int idx)
     {
         mlp.lossType = idx == 0 ? LossType.BCE : LossType.MSE;
+
+        EventLogger.Instance?.LogEvent(
+            eventType: "ParamChange",
+            key: "loss_type",
+            value: mlp.lossType.ToString()
+        );
+
         RefreshAll();
         ReportMetricsToTrackerFromCurrent();
+        LogFaithfulnessSnapshot();
     }
 
-    void OnThresholdSliderChanged(float _)
+    void OnThresholdSliderChanged(float value)
     {
         RefreshPanelsOnly();
-        ReportThresholdChange();
+        ReportThresholdChange(value);
         ReportMetricsToTrackerFromCurrent();
+        LogFaithfulnessSnapshot();
     }
 
     void Step()
     {
         int N = dataset.count;
+
         if (tglMinibatch && tglMinibatch.isOn)
         {
             int bs = Mathf.Clamp((int)sldBatch.value, 1, N);
@@ -120,16 +189,26 @@ public class LossThresholdExplorer : MonoBehaviour
             mlp.Forward(X, Y);
             mlp.StepSGD(N);
         }
+
+        stepCount++;
+
         RefreshAll();
         ReportMetricsToTrackerFromCurrent();
+        LogFaithfulnessSnapshot();
+
+        EventLogger.Instance?.LogEvent(
+            eventType: "StepTrain",
+            key: "step",
+            value: stepCount.ToString()
+        );
     }
 
     void RefreshAll()
     {
         var (loss, P) = mlp.Forward(X, Y);
-
         float thr = sldThreshold.value;
-        (int TP, int FP, int TN, int FN, float prec, float rec, float f1, float acc) = Metrics(P, Y, thr);
+
+        var (TP, FP, TN, FN, prec, rec, f1, acc) = Metrics(P, Y, thr);
 
         if (txtMetrics)
         {
@@ -151,7 +230,7 @@ public class LossThresholdExplorer : MonoBehaviour
         var (loss, P) = mlp.Forward(X, Y);
         float thr = sldThreshold.value;
 
-        (int TP, int FP, int TN, int FN, float prec, float rec, float f1, float acc) = Metrics(P, Y, thr);
+        var (TP, FP, TN, FN, prec, rec, f1, acc) = Metrics(P, Y, thr);
 
         if (txtMetrics)
         {
@@ -175,8 +254,14 @@ public class LossThresholdExplorer : MonoBehaviour
             lossType = (drpLossType.value == 0 ? LossType.BCE : LossType.MSE),
             lr = sldLR.value
         };
+
+        stepCount = 0;
+
         RefreshAll();
         ReportMetricsToTrackerFromCurrent();
+        LogFaithfulnessSnapshot();
+
+        EventLogger.Instance?.LogEvent("ResetPressed");
     }
 
     void ShuffleData()
@@ -185,9 +270,17 @@ public class LossThresholdExplorer : MonoBehaviour
         X = dataset.XMatrix();
         Y = dataset.YMatrix();
         SpawnPoints();
+
+        stepCount = 0;
+
         RefreshAll();
         ReportMetricsToTrackerFromCurrent();
+        LogFaithfulnessSnapshot();
+
+        EventLogger.Instance?.LogEvent("ShuffleData");
     }
+
+    // ---------------- Rendering helpers ----------------
 
     void SpawnPoints()
     {
@@ -214,15 +307,16 @@ public class LossThresholdExplorer : MonoBehaviour
             bool isRed = dataset.labels[i] > 0.5f;
             Color baseCol = isRed ? redColor : blueColor;
 
-            // confidence-based fade (uncertain points are lighter)
             float conf = Mathf.Clamp01(Mathf.Abs(P[i, 0] - 0.5f) * 2f);
             float a = Mathf.Lerp(0.25f, baseCol.a, conf);
             baseCol.a = a;
+
             sr.color = baseCol;
         }
     }
 
-    // metrics
+    // ---------------- Metrics ----------------
+
     (int, int, int, int, float, float, float, float) Metrics(float[,] P, float[,] Y, float thr)
     {
         int N = P.GetLength(0);
@@ -270,11 +364,18 @@ public class LossThresholdExplorer : MonoBehaviour
 
     // ---------- Gamification glue ----------
 
-    void ReportThresholdChange()
+    void ReportThresholdChange(float value)
     {
         if (_tracker == null)
             _tracker = UnityEngine.Object.FindFirstObjectByType<ObjectiveTracker>();
+
         _tracker?.ReportAction("threshold_change");
+
+        EventLogger.Instance?.LogEvent(
+            eventType: "ParamChange",
+            key: "threshold",
+            value: value.ToString("F3", CultureInfo.InvariantCulture)
+        );
     }
 
     void ReportMetricsToTrackerFromCurrent()
@@ -293,6 +394,19 @@ public class LossThresholdExplorer : MonoBehaviour
         _tracker.ReportFaithfulness(F);
     }
 
+    void LogFaithfulnessSnapshot()
+    {
+        if (mlp == null || X == null || Y == null) return;
+
+        float F = ComputeFaithfulness();
+
+        EventLogger.Instance?.LogEvent(
+            eventType: "FaithfulnessUpdated",
+            key: SceneManager.GetActiveScene().name,
+            fScore: F
+        );
+    }
+
     // Perturbation-based faithfulness: stability of correct predictions
     float ComputeFaithfulness()
     {
@@ -300,7 +414,6 @@ public class LossThresholdExplorer : MonoBehaviour
         int n = X.GetLength(0);
         if (n == 0) return 0f;
 
-        // bounds
         float minX = float.PositiveInfinity, maxX = float.NegativeInfinity;
         float minY = float.PositiveInfinity, maxY = float.NegativeInfinity;
         for (int i = 0; i < n; i++)
@@ -330,7 +443,7 @@ public class LossThresholdExplorer : MonoBehaviour
             float p = Pbase[0, 0];
             bool pred = p >= 0.5f;
             bool lab = Y[i, 0] >= 0.5f;
-            if (pred != lab) continue; // only evaluate regions we currently classify correctly
+            if (pred != lab) continue;
 
             float deltaSum = 0f;
 
@@ -365,11 +478,29 @@ public class LossThresholdExplorer : MonoBehaviour
         return (float)randStdNormal;
     }
 
-    // Call this from your "Done / Next" button for S4_UNDER240
+    // ---------- Public: call from "Next/Done" button in S4 ----------
+
     public void OnSceneCompleted()
     {
         if (_tracker == null)
             _tracker = UnityEngine.Object.FindFirstObjectByType<ObjectiveTracker>();
+
         _tracker?.ReportSceneFinish();
+
+        string sceneId = SceneManager.GetActiveScene().name;
+        float finalF = ComputeFaithfulness();
+
+        EventLogger.Instance?.LogEvent(
+            eventType: "RunCompleted",
+            key: sceneId,
+            value: "success",
+            fScore: finalF
+        );
+
+        CrossSceneComparisonManager.Instance?.RegisterRun(
+            sceneId: sceneId,
+            fScore: finalF,
+            success: true
+        );
     }
 }

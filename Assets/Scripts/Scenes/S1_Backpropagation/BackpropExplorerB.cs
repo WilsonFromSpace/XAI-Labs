@@ -62,6 +62,12 @@ public class BackpropExplorerB : MonoBehaviour
 
     void Start()
     {
+        // Log scene start
+        EventLogger.Instance?.LogEvent(
+            eventType: "SceneStart",
+            key: UnityEngine.SceneManagement.SceneManager.GetActiveScene().name
+        );
+
         // Make a runtime copy and randomize every play
         if (dataset == null)
         {
@@ -80,11 +86,22 @@ public class BackpropExplorerB : MonoBehaviour
 
         // UI hooks
         btnStep.onClick.AddListener(StepTrain);
+
         tglAuto.onValueChanged.AddListener(v => autoTrain = v);
-        sldLR.onValueChanged.AddListener(v => mlp.lr = v);
+
+        sldLR.onValueChanged.AddListener(v =>
+        {
+            mlp.lr = v;
+            EventLogger.Instance?.LogEvent(
+                eventType: "ParamChange",
+                key: "learning_rate",
+                value: v.ToString("F4", System.Globalization.CultureInfo.InvariantCulture)
+            );
+        });
         mlp.lr = sldLR.value;
 
         drpActivation.onValueChanged.AddListener(OnActChanged);
+
         if (tglMinibatch) tglMinibatch.onValueChanged.AddListener(_ => UpdateBatchLabel());
         if (sldBatch) sldBatch.onValueChanged.AddListener(_ => UpdateBatchLabel());
         UpdateBatchLabel();
@@ -151,10 +168,17 @@ public class BackpropExplorerB : MonoBehaviour
         UpdateAccuracyBadge();
         if (highlightMistakes) MarkMistakes();
 
-        // Gamification: record tried variant + re-check faithfulness
+        // Gamification
         var tracker = UnityEngine.Object.FindFirstObjectByType<ObjectiveTracker>();
         tracker?.ReportTriedVariant(((Act)idx).ToString());
         ReportFaithfulnessToTracker();
+
+        // Logging
+        EventLogger.Instance?.LogEvent(
+            eventType: "ParamChange",
+            key: "activation",
+            value: ((Act)idx).ToString()
+        );
     }
 
     void SpawnPoints()
@@ -167,13 +191,15 @@ public class BackpropExplorerB : MonoBehaviour
         {
             var go = Instantiate(pointPrefab, dataset.points[i], Quaternion.identity, pointsParent);
             var sr = go.GetComponent<SpriteRenderer>();
-            sr.color = dataset.labels[i] > 0.5f ? new Color(0.94f, 0.28f, 0.28f) : new Color(0.28f, 0.46f, 0.94f);
+            sr.color = dataset.labels[i] > 0.5f
+                ? new Color(0.94f, 0.28f, 0.28f)
+                : new Color(0.28f, 0.46f, 0.94f);
             sr.sortingOrder = 10;
             go.transform.localScale = Vector3.one * 0.15f;
             pointGOs.Add(go);
         }
 
-        // cache base colors for mistake-highlighting toggles
+        // cache base colors
         basePointColors = new Color[pointGOs.Count];
         for (int i = 0; i < pointGOs.Count; i++)
             basePointColors[i] = pointGOs[i].GetComponent<SpriteRenderer>().color;
@@ -217,10 +243,17 @@ public class BackpropExplorerB : MonoBehaviour
 
         prevLoss = loss;
 
-        // Gamification: count action + report faithfulness
+        // Gamification: count action + update F
         var tracker = UnityEngine.Object.FindFirstObjectByType<ObjectiveTracker>();
         tracker?.ReportAction("weight_adjust");
         ReportFaithfulnessToTracker();
+
+        // Logging: one line per step
+        EventLogger.Instance?.LogEvent(
+            eventType: "StepTrain",
+            key: "step",
+            value: stepCount.ToString()
+        );
     }
 
     void RedrawField() => field.Redraw(WorldToProb);
@@ -263,6 +296,7 @@ public class BackpropExplorerB : MonoBehaviour
 
     void PushLossToChart()
     {
+        if (lossChart == null) return;
         var (loss, _) = mlp.Forward(X, Y);
         lossChart.Push(loss);
     }
@@ -278,7 +312,6 @@ public class BackpropExplorerB : MonoBehaviour
         accuracyBadge?.UpdateFrom(mlp, X, Y, stepCount);
     }
 
-    // NEW: re-usable loss text (was missing and caused your error)
     void UpdateLossText()
     {
         if (mlp == null || X == null || Y == null || txtLoss == null) return;
@@ -286,7 +319,6 @@ public class BackpropExplorerB : MonoBehaviour
         txtLoss.text = $"Loss: {loss:F4} | LR: {mlp.lr:F4} | Act: {mlp.activation}";
     }
 
-    // --- extra actions ---
     void ResetModel()
     {
         mlp = new MLP(2, 3, 1, seed: UnityEngine.Random.Range(1, 1_000_000))
@@ -305,8 +337,9 @@ public class BackpropExplorerB : MonoBehaviour
         if (probe != null) probe.mlp = mlp;
         if (highlightMistakes) MarkMistakes();
 
-        // Recompute/Report F after reset
         ReportFaithfulnessToTracker();
+
+        EventLogger.Instance?.LogEvent("ResetPressed");
     }
 
     void ShuffleData()
@@ -321,16 +354,14 @@ public class BackpropExplorerB : MonoBehaviour
         RedrawField();
         NotifyPanels();
         UpdateAccuracyBadge();
-        // keep chart history; uncomment to clear:
-        // lossChart?.ClearSeries();
 
         if (highlightMistakes) MarkMistakes();
 
-        // Recompute/Report F after shuffle
         ReportFaithfulnessToTracker();
+
+        EventLogger.Instance?.LogEvent("ShuffleData");
     }
 
-    // --- optional: misclassification tinting ---
     void MarkMistakes()
     {
         var (_, P) = mlp.Forward(X, Y);
@@ -351,7 +382,6 @@ public class BackpropExplorerB : MonoBehaviour
         int n = X.GetLength(0);
         if (n == 0) return 0f;
 
-        // Determine data scale (for sensible perturbations)
         float minX = float.PositiveInfinity, maxX = float.NegativeInfinity;
         float minY = float.PositiveInfinity, maxY = float.NegativeInfinity;
         for (int i = 0; i < n; i++)
@@ -363,20 +393,19 @@ public class BackpropExplorerB : MonoBehaviour
         }
         float scaleX = Mathf.Max(1e-4f, maxX - minX);
         float scaleY = Mathf.Max(1e-4f, maxY - minY);
-        float sigmaX = 0.05f * scaleX;   // 5% of data range
+        float sigmaX = 0.05f * scaleX;
         float sigmaY = 0.05f * scaleY;
 
-        int maxSamples = Mathf.Min(200, n);   // cap for speed
-        int kPerturb = 3;                     // perturbations per point
+        int maxSamples = Mathf.Min(200, n);
+        int kPerturb = 3;
 
         float sumStability = 0f;
         int stableCount = 0;
 
         for (int si = 0; si < maxSamples; si++)
         {
-            int i = si * n / maxSamples;      // spread across dataset
+            int i = si * n / maxSamples;
 
-            // base prediction
             float[,] Xi = new float[1, 2] { { X[i, 0], X[i, 1] } };
             float[,] Yi = new float[1, 1] { { Y[i, 0] } };
             var (_, Pbase) = mlp.Forward(Xi, Yi);
@@ -384,11 +413,9 @@ public class BackpropExplorerB : MonoBehaviour
             bool pred = p >= 0.5f;
             bool lab = Y[i, 0] >= 0.5f;
 
-            // only reward regions the model currently gets right
             if (pred != lab) continue;
 
             float deltaSum = 0f;
-
             for (int k = 0; k < kPerturb; k++)
             {
                 float dx = NextGaussian() * sigmaX;
@@ -399,26 +426,25 @@ public class BackpropExplorerB : MonoBehaviour
                 float[,] Xp = new float[1, 2] { { nx, ny } };
                 var (_, Pp) = mlp.Forward(Xp, Yi);
                 float pp = Pp[0, 0];
-
-                deltaSum += Mathf.Abs(pp - p);    // how much the prob changed
+                deltaSum += Mathf.Abs(pp - p);
             }
 
-            float avgDelta = deltaSum / kPerturb;   // 0..1
-            float stability = Mathf.Clamp01(1f - avgDelta); // 1 = very stable
+            float avgDelta = deltaSum / kPerturb;
+            float stability = Mathf.Clamp01(1f - avgDelta);
             sumStability += stability;
             stableCount++;
         }
 
         if (stableCount == 0) return 0f;
-        return sumStability / stableCount; // 0..1
+        return sumStability / stableCount;
     }
 
-    // Box-Muller transform using existing rng
     float NextGaussian()
     {
         double u1 = 1.0 - rnd.NextDouble();
         double u2 = 1.0 - rnd.NextDouble();
-        double randStdNormal = Math.Sqrt(-2.0 * Math.Log(u1)) * Math.Sin(2.0 * Math.PI * u2);
+        double randStdNormal =
+            Math.Sqrt(-2.0 * Math.Log(u1)) * Math.Sin(2.0 * Math.PI * u2);
         return (float)randStdNormal;
     }
 
@@ -429,6 +455,11 @@ public class BackpropExplorerB : MonoBehaviour
 
         float F = ComputeFaithfulness();
         tracker.ReportFaithfulness(F);
-    }
 
+        // Log faithfulness snapshot
+        EventLogger.Instance?.LogEvent(
+            eventType: "FaithfulnessUpdated",
+            fScore: F
+        );
+    }
 }

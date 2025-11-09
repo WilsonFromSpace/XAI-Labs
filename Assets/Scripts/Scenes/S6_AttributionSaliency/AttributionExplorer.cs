@@ -1,10 +1,13 @@
 ﻿using UnityEngine;
 using UnityEngine.UI;
 using TMPro;
+using UnityEngine.SceneManagement;
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 
-/// Scene 7 controller with stronger visuals + dataset randomization on Respawn/Rebuild.
+/// Scene 6 controller: attribution, surrogates, counterfactuals.
+/// Updated with event logging + cross-scene comparison + gamification glue.
 public class AttributionExplorer : MonoBehaviour
 {
     [Header("Data")]
@@ -26,8 +29,9 @@ public class AttributionExplorer : MonoBehaviour
     public SpriteRenderer counterfactualGhost; // small circle sprite
 
     [Header("Train")]
-    public Slider sldLR, sldBatch; public Toggle tglAuto, tglMinibatch;
-    public Button btnStep, btnReset, btnRebuild, btnRespawn; // ← Respawn added
+    public Slider sldLR, sldBatch;
+    public Toggle tglAuto, tglMinibatch;
+    public Button btnStep, btnReset, btnRebuild, btnRespawn;
     public TMP_Text txtTrain, txtVal, txtScore;
 
     [Header("Attribution Controls")]
@@ -57,16 +61,30 @@ public class AttributionExplorer : MonoBehaviour
     readonly List<SpriteRenderer> dots = new List<SpriteRenderer>();
     System.Random rnd = new System.Random(7);
 
-    bool auto = false; float tick = 0f; const float dt = 0.05f;
-    int selIndex = -1; Vector2 selPoint;
+    bool auto = false;
+    float tick = 0f;
+    const float dt = 0.05f;
+    int selIndex = -1;
+    Vector2 selPoint;
     Vector2 wmin, wmax;
+    int stepCount = 0;
+
+    // Gamification
+    ObjectiveTracker _tracker;
+    readonly HashSet<string> _explored = new HashSet<string>();
 
     void Start()
     {
-        if (!dataset) dataset = ScriptableObject.CreateInstance<Dataset2D_S6>();
-        // initial data
-        GenerateDatasetWithNewSeed();
+        // Log scene start
+        EventLogger.Instance?.LogEvent(
+            eventType: "SceneStart",
+            key: SceneManager.GetActiveScene().name
+        );
 
+        if (!dataset)
+            dataset = ScriptableObject.CreateInstance<Dataset2D_S6>();
+
+        GenerateDatasetWithNewSeed();
         SplitTrainVal();
         BuildModel();
         WireUI();
@@ -74,34 +92,239 @@ public class AttributionExplorer : MonoBehaviour
         ConfigureBounds();
         ApplyStyleToLines();
         RedrawAll();
+
+        _tracker = UnityEngine.Object.FindFirstObjectByType<ObjectiveTracker>();
+
+        // Initial metrics -> tracker + F logging
+        ReportMetricsToTrackerFromCurrent();
+        LogFaithfulnessSnapshot();
     }
 
     void WireUI()
     {
-        btnStep.onClick.AddListener(Step);
-        tglAuto.onValueChanged.AddListener(v => auto = v);
-        sldLR.onValueChanged.AddListener(v => mlp.lr = v);
+        // Manual step
+        if (btnStep)
+        {
+            btnStep.onClick.AddListener(() =>
+            {
+                Step();
+                _tracker?.ReportAction("step_train");
+                EventLogger.Instance?.LogEvent("Action", key: "step_train");
+            });
+        }
+
+        // Auto toggle
+        if (tglAuto)
+        {
+            tglAuto.onValueChanged.AddListener(v =>
+            {
+                auto = v;
+                EventLogger.Instance?.LogEvent(
+                    eventType: "ParamChange",
+                    key: "auto_mode",
+                    value: v ? "on" : "off"
+                );
+            });
+        }
+
+        // Learning rate
+        if (sldLR)
+        {
+            sldLR.onValueChanged.AddListener(v =>
+            {
+                if (mlp != null) mlp.lr = v;
+                EventLogger.Instance?.LogEvent(
+                    eventType: "ParamChange",
+                    key: "learning_rate",
+                    value: v.ToString("F4", CultureInfo.InvariantCulture)
+                );
+            });
+        }
+
+        // Minibatch toggle
+        if (tglMinibatch)
+        {
+            tglMinibatch.onValueChanged.AddListener(v =>
+            {
+                EventLogger.Instance?.LogEvent(
+                    eventType: "ParamChange",
+                    key: "minibatch_enabled",
+                    value: v ? "true" : "false"
+                );
+            });
+        }
+
+        // Batch size
+        if (sldBatch)
+        {
+            sldBatch.onValueChanged.AddListener(v =>
+            {
+                EventLogger.Instance?.LogEvent(
+                    eventType: "ParamChange",
+                    key: "batch_size",
+                    value: ((int)v).ToString()
+                );
+            });
+        }
 
         // Reset = rebuild model only (keep current data)
-        if (btnReset) btnReset.onClick.AddListener(() => { BuildModel(); RedrawAll(); });
+        if (btnReset)
+        {
+            btnReset.onClick.AddListener(() =>
+            {
+                BuildModel();
+                RedrawAll();
+                ReportMetricsToTrackerFromCurrent();
+                LogFaithfulnessSnapshot();
+
+                EventLogger.Instance?.LogEvent("ResetPressed");
+            });
+        }
 
         // Respawn = randomize dataset, keep current model weights
-        if (btnRespawn) btnRespawn.onClick.AddListener(RandomizeDataset);
+        if (btnRespawn)
+        {
+            btnRespawn.onClick.AddListener(() =>
+            {
+                RandomizeDataset();
+                ReportMetricsToTrackerFromCurrent();
+                LogFaithfulnessSnapshot();
+
+                EventLogger.Instance?.LogEvent("Action", key: "respawn_dataset");
+            });
+        }
 
         // Rebuild = randomize dataset AND rebuild model
-        if (btnRebuild) btnRebuild.onClick.AddListener(RandomizeAndRebuild);
+        if (btnRebuild)
+        {
+            btnRebuild.onClick.AddListener(() =>
+            {
+                RandomizeAndRebuild();
+                ReportMetricsToTrackerFromCurrent();
+                LogFaithfulnessSnapshot();
 
-        if (tglShowWind) tglShowWind.onValueChanged.AddListener(_ => RedrawAll());
-        if (tglShowSur) tglShowSur.onValueChanged.AddListener(_ => RedrawAll());
-        if (tglShowIG) tglShowIG.onValueChanged.AddListener(_ => RedrawAll());
-        if (tglShowCF) tglShowCF.onValueChanged.AddListener(_ => RedrawAll());
+                EventLogger.Instance?.LogEvent("Action", key: "rebuild_dataset_model");
+            });
+        }
+
+        // Attribution toggles
+        if (tglShowWind)
+        {
+            tglShowWind.onValueChanged.AddListener(v =>
+            {
+                RedrawAll();
+                if (v) RegisterExploration("GradField");
+                EventLogger.Instance?.LogEvent(
+                    eventType: "ParamChange",
+                    key: "show_gradfield",
+                    value: v ? "true" : "false"
+                );
+            });
+        }
+
+        if (tglShowSur)
+        {
+            tglShowSur.onValueChanged.AddListener(v =>
+            {
+                RedrawAll();
+                if (v) RegisterExploration("Surrogate");
+                EventLogger.Instance?.LogEvent(
+                    eventType: "ParamChange",
+                    key: "show_surrogate",
+                    value: v ? "true" : "false"
+                );
+            });
+        }
+
+        if (tglShowIG)
+        {
+            tglShowIG.onValueChanged.AddListener(v =>
+            {
+                RedrawAll();
+                if (v) RegisterExploration("IG");
+                EventLogger.Instance?.LogEvent(
+                    eventType: "ParamChange",
+                    key: "show_ig",
+                    value: v ? "true" : "false"
+                );
+            });
+        }
+
+        if (tglShowCF)
+        {
+            tglShowCF.onValueChanged.AddListener(v =>
+            {
+                RedrawAll();
+                if (v) RegisterExploration("CF");
+                EventLogger.Instance?.LogEvent(
+                    eventType: "ParamChange",
+                    key: "show_cf",
+                    value: v ? "true" : "false"
+                );
+            });
+        }
+
+        // Attribution hyperparameters
+        if (sldIGSteps)
+        {
+            sldIGSteps.onValueChanged.AddListener(v =>
+            {
+                EventLogger.Instance?.LogEvent(
+                    eventType: "ParamChange",
+                    key: "ig_steps",
+                    value: ((int)v).ToString()
+                );
+            });
+        }
+
+        if (sldLimeSigma)
+        {
+            sldLimeSigma.onValueChanged.AddListener(v =>
+            {
+                EventLogger.Instance?.LogEvent(
+                    eventType: "ParamChange",
+                    key: "lime_sigma",
+                    value: v.ToString("F3", CultureInfo.InvariantCulture)
+                );
+            });
+        }
+
+        if (sldCFSteps)
+        {
+            sldCFSteps.onValueChanged.AddListener(v =>
+            {
+                EventLogger.Instance?.LogEvent(
+                    eventType: "ParamChange",
+                    key: "cf_steps",
+                    value: ((int)v).ToString()
+                );
+            });
+        }
+
+        if (sldCFAlpha)
+        {
+            sldCFAlpha.onValueChanged.AddListener(v =>
+            {
+                EventLogger.Instance?.LogEvent(
+                    eventType: "ParamChange",
+                    key: "cf_alpha",
+                    value: v.ToString("F3", CultureInfo.InvariantCulture)
+                );
+            });
+        }
     }
 
     // ---------- Dataset ops ----------
+
     void GenerateDatasetWithNewSeed()
     {
-        dataset.Generate(defaultShape, defaultSamples, defaultNoise, defaultOverlap,
-                         UnityEngine.Random.Range(1, 1_000_000));
+        dataset.Generate(
+            defaultShape,
+            defaultSamples,
+            defaultNoise,
+            defaultOverlap,
+            UnityEngine.Random.Range(1, 1_000_000)
+        );
     }
 
     public void RandomizeDataset()
@@ -123,49 +346,45 @@ public class AttributionExplorer : MonoBehaviour
         RedrawAll();
     }
 
-    void Update()
-    {
-        if (Input.GetMouseButtonDown(0)) SelectNearestPointAtMouse();
-        if (!auto) return;
-        tick += Time.deltaTime;
-        if (tick >= dt) { tick = 0f; Step(); }
-    }
-
-    void SelectNearestPointAtMouse()
-    {
-        Vector3 w = Camera.main.ScreenToWorldPoint(Input.mousePosition); w.z = 0f;
-        int best = -1; float bestD = 1e9f;
-        for (int i = 0; i < dataset.count; i++)
-        {
-            float d = (dataset.points[i] - (Vector2)w).sqrMagnitude;
-            if (d < bestD) { bestD = d; best = i; }
-        }
-        if (best >= 0) { selIndex = best; selPoint = dataset.points[best]; EmphasizeSelection(); RedrawAttribution(); }
-    }
-
-    void EmphasizeSelection()
-    {
-        for (int i = 0; i < dots.Count; i++)
-        {
-            float s = (i == selIndex) ? selectedDotScale : dotScale;
-            dots[i].transform.localScale = Vector3.one * s;
-        }
-    }
-
     void SplitTrainVal()
     {
-        int N = dataset.count, Nv = Mathf.RoundToInt(N * valSplit), Nt = N - Nv;
-        int[] idx = new int[N]; for (int i = 0; i < N; i++) idx[i] = i;
-        for (int i = 0; i < N; i++) { int j = rnd.Next(N); (idx[i], idx[j]) = (idx[j], idx[i]); }
+        int N = dataset.count;
+        int Nv = Mathf.RoundToInt(N * valSplit);
+        int Nt = N - Nv;
 
-        Xtr = new float[Nt, 2]; Ytr = new float[Nt, 1]; Xval = new float[Nv, 2]; Yval = new float[Nv, 1];
-        for (int k = 0; k < Nt; k++) { int i = idx[k]; Xtr[k, 0] = dataset.points[i].x; Xtr[k, 1] = dataset.points[i].y; Ytr[k, 0] = dataset.labels[i]; }
-        for (int k = 0; k < Nv; k++) { int i = idx[Nt + k]; Xval[k, 0] = dataset.points[i].x; Xval[k, 1] = dataset.points[i].y; Yval[k, 0] = dataset.labels[i]; }
+        int[] idx = new int[N];
+        for (int i = 0; i < N; i++) idx[i] = i;
+        for (int i = 0; i < N; i++)
+        {
+            int j = rnd.Next(N);
+            (idx[i], idx[j]) = (idx[j], idx[i]);
+        }
+
+        Xtr = new float[Nt, 2];
+        Ytr = new float[Nt, 1];
+        Xval = new float[Nv, 2];
+        Yval = new float[Nv, 1];
+
+        for (int k = 0; k < Nt; k++)
+        {
+            int i = idx[k];
+            Xtr[k, 0] = dataset.points[i].x;
+            Xtr[k, 1] = dataset.points[i].y;
+            Ytr[k, 0] = dataset.labels[i];
+        }
+        for (int k = 0; k < Nv; k++)
+        {
+            int i = idx[Nt + k];
+            Xval[k, 0] = dataset.points[i].x;
+            Xval[k, 1] = dataset.points[i].y;
+            Yval[k, 0] = dataset.labels[i];
+        }
     }
 
     void BuildModel()
     {
-        mlp = new MLP_Capacity(2, hidden: 16, output: 1, layers: 2, seed: UnityEngine.Random.Range(1, 1_000_000))
+        mlp = new MLP_Capacity(2, hidden: 16, output: 1, layers: 2,
+            seed: UnityEngine.Random.Range(1, 1_000_000))
         {
             lr = sldLR ? sldLR.value : 0.1f,
             lossType = MLP_Capacity.LossType.BCE,
@@ -178,13 +397,15 @@ public class AttributionExplorer : MonoBehaviour
 
     void SpawnDots()
     {
-        for (int i = pointsParent.childCount - 1; i >= 0; i--) Destroy(pointsParent.GetChild(i).gameObject);
+        for (int i = pointsParent.childCount - 1; i >= 0; i--)
+            Destroy(pointsParent.GetChild(i).gameObject);
         dots.Clear();
 
         for (int i = 0; i < dataset.count; i++)
         {
             var go = Instantiate(pointPrefab, dataset.points[i], Quaternion.identity, pointsParent);
-            var sr = go.GetComponent<SpriteRenderer>(); sr.sortingOrder = 10;
+            var sr = go.GetComponent<SpriteRenderer>();
+            sr.sortingOrder = 10;
             sr.color = dataset.labels[i] > 0.5f ? colorPos : colorNeg;
             go.transform.localScale = Vector3.one * dotScale;
             dots.Add(sr);
@@ -194,11 +415,19 @@ public class AttributionExplorer : MonoBehaviour
     void ConfigureBounds()
     {
         float minx = 1e9f, miny = 1e9f, maxx = -1e9f, maxy = -1e9f;
-        foreach (var p in dataset.points) { if (p.x < minx) minx = p.x; if (p.y < miny) miny = p.y; if (p.x > maxx) maxx = p.x; if (p.y > maxy) maxy = p.y; }
+        foreach (var p in dataset.points)
+        {
+            if (p.x < minx) minx = p.x;
+            if (p.y < miny) miny = p.y;
+            if (p.x > maxx) maxx = p.x;
+            if (p.y > maxy) maxy = p.y;
+        }
+
         Vector2 size = new Vector2(maxx - minx, maxy - miny);
         Vector2 pad = 0.15f * size;
         wmin = new Vector2(minx, miny) - pad;
         wmax = new Vector2(maxx, maxy) + pad;
+
         if (decision) decision.Configure(wmin, wmax);
         if (gradField) gradField.Configure(wmin, wmax);
     }
@@ -208,24 +437,89 @@ public class AttributionExplorer : MonoBehaviour
         if (surrogateLine)
         {
             surrogateLine.widthMultiplier = lineWidth;
-            surrogateLine.numCapVertices = 8; surrogateLine.numCornerVertices = 8;
+            surrogateLine.numCapVertices = 8;
+            surrogateLine.numCornerVertices = 8;
         }
+
         if (gradArrow)
         {
             gradArrow.widthMultiplier = lineWidth;
-            gradArrow.numCapVertices = 8; gradArrow.numCornerVertices = 8;
-            gradArrow.startColor = Color.white; gradArrow.endColor = Color.white;
+            gradArrow.numCapVertices = 8;
+            gradArrow.numCornerVertices = 8;
+            gradArrow.startColor = Color.white;
+            gradArrow.endColor = Color.white;
         }
+
         if (counterfactualGhost)
         {
             counterfactualGhost.color = colorGhost;
-            counterfactualGhost.transform.localScale = Vector3.one * (selectedDotScale * 0.9f);
+            counterfactualGhost.transform.localScale =
+                Vector3.one * (selectedDotScale * 0.9f);
+        }
+    }
+
+    void Update()
+    {
+        if (Input.GetMouseButtonDown(0))
+            SelectNearestPointAtMouse();
+
+        if (!auto) return;
+
+        tick += Time.deltaTime;
+        if (tick >= dt)
+        {
+            tick = 0f;
+            Step();
+
+            _tracker?.ReportAction("step_train_auto");
+            EventLogger.Instance?.LogEvent("Action", key: "step_train_auto");
+        }
+    }
+
+    void SelectNearestPointAtMouse()
+    {
+        var cam = Camera.main;
+        if (!cam) return;
+
+        Vector3 w = cam.ScreenToWorldPoint(Input.mousePosition);
+        w.z = 0f;
+
+        int best = -1;
+        float bestD = 1e9f;
+        for (int i = 0; i < dataset.count; i++)
+        {
+            float d = (dataset.points[i] - (Vector2)w).sqrMagnitude;
+            if (d < bestD)
+            {
+                bestD = d;
+                best = i;
+            }
+        }
+
+        if (best >= 0)
+        {
+            selIndex = best;
+            selPoint = dataset.points[best];
+            EmphasizeSelection();
+            RedrawAttribution();
+        }
+    }
+
+    void EmphasizeSelection()
+    {
+        for (int i = 0; i < dots.Count; i++)
+        {
+            float s = (i == selIndex) ? selectedDotScale : dotScale;
+            dots[i].transform.localScale = Vector3.one * s;
         }
     }
 
     void Step()
     {
+        if (mlp == null || Xtr == null || Ytr == null) return;
+
         int N = Xtr.GetLength(0);
+
         if (tglMinibatch && tglMinibatch.isOn)
         {
             int bs = Mathf.Clamp((int)sldBatch.value, 1, N);
@@ -234,44 +528,92 @@ public class AttributionExplorer : MonoBehaviour
             mlp.Forward(Xb, Yb, train: true);
             mlp.StepSGD(bs);
         }
-        else { mlp.Forward(Xtr, Ytr, train: true); mlp.StepSGD(N); }
+        else
+        {
+            mlp.Forward(Xtr, Ytr, train: true);
+            mlp.StepSGD(N);
+        }
+
+        stepCount++;
+
         RedrawAll();
+        ReportMetricsToTrackerFromCurrent();
+        LogFaithfulnessSnapshot();
+
+        EventLogger.Instance?.LogEvent(
+            eventType: "StepTrain",
+            key: "step",
+            value: stepCount.ToString()
+        );
     }
 
     void RedrawAll()
     {
+        if (mlp == null) return;
+
         var (ltr, Ptr) = mlp.Forward(Xtr, Ytr, train: false);
         var (lva, Pva) = mlp.Forward(Xval, Yval, train: false);
-        float atr = Acc(Ptr, Ytr, 0.5f), ava = Acc(Pva, Yval, 0.5f);
-        float gap = Mathf.Max(0f, atr - ava); float score = ava - 0.5f * gap;
 
-        if (txtTrain) txtTrain.text = $"TRAIN:\nACC {atr:0.000}\n| LOSS\n{ltr:0.0000}";
-        if (txtVal) txtVal.text = $"VAL:\nACC {ava:0.000}\n| LOSS\n{lva:0.0000}";
-        if (txtScore) txtScore.text = $"GENERALIZ-\nATION\nSCORE:\n{score:0.000}";
+        float atr = Acc(Ptr, Ytr, 0.5f);
+        float ava = Acc(Pva, Yval, 0.5f);
+        float gap = Mathf.Max(0f, atr - ava);
+        float score = ava - 0.5f * gap;
 
-        if (decision) decision.Redraw(mlp);
-        if (tglShowWind && tglShowWind.isOn) { if (gradField) gradField.Redraw(mlp, 12); }
-        else { if (gradField) gradField.Clear(); }
+        if (txtTrain)
+            txtTrain.text = $"TRAIN:\nACC {atr:0.000}\n| LOSS\n{ltr:0.0000}";
+        if (txtVal)
+            txtVal.text = $"VAL:\nACC {ava:0.000}\n| LOSS\n{lva:0.0000}";
+        if (txtScore)
+            txtScore.text = $"GENERALIZ-\nATION\nSCORE:\n{score:0.000}";
 
-        if (selIndex >= 0) RedrawAttribution();
+        if (decision)
+            decision.Redraw(mlp);
+
+        if (tglShowWind && tglShowWind.isOn)
+        {
+            if (gradField) gradField.Redraw(mlp, 12);
+        }
+        else
+        {
+            if (gradField) gradField.Clear();
+        }
+
+        if (selIndex >= 0)
+            RedrawAttribution();
+
+        // Metrics + F to tracker
+        ReportMetricsToTracker(score);
     }
 
     void RedrawAttribution()
     {
+        if (selIndex < 0 || selIndex >= dataset.count)
+            return;
+
         Vector2 g = GradP(selPoint);
         DrawGradArrow(selPoint, g);
 
-        if (tglShowSur && tglShowSur.isOn) DrawLocalSurrogate(selPoint, sldLimeSigma ? sldLimeSigma.value : 0.15f);
-        else if (surrogateLine) surrogateLine.positionCount = 0;
+        if (tglShowSur && tglShowSur.isOn)
+        {
+            float sigma = sldLimeSigma ? sldLimeSigma.value : 0.15f;
+            DrawLocalSurrogate(selPoint, sigma);
+        }
+        else if (surrogateLine)
+        {
+            surrogateLine.positionCount = 0;
+        }
 
         if (tglShowIG && tglShowIG.isOn)
         {
             int m = sldIGSteps ? Mathf.Clamp((int)sldIGSteps.value, 8, 256) : 32;
             Vector2 baseline = Vector2.zero;
             Vector2 ig = IntegratedGradients(selPoint, baseline, m);
-            if (igBars) igBars.Redraw(ig.x, ig.y);
+            igBars?.Redraw(ig.x, ig.y);
         }
-        else if (igBars) igBars.Clear();
+        else
+        {
+            igBars?.Clear();
+        }
 
         if (tglShowCF && tglShowCF.isOn)
         {
@@ -279,10 +621,17 @@ public class AttributionExplorer : MonoBehaviour
             float alpha = sldCFAlpha ? Mathf.Clamp(sldCFAlpha.value, 0.05f, 4f) : 0.8f;
             Vector2 cf = CounterfactualToBoundary(selPoint, steps, alpha);
             DrawCounterfactual(selPoint, cf);
+
+            // Gamification + logging
+            ReportCounterfactualGenerated();
+            EventLogger.Instance?.LogEvent(
+                eventType: "Action",
+                key: "counterfactual_generate"
+            );
         }
-        else
+        else if (counterfactualGhost)
         {
-            if (counterfactualGhost) counterfactualGhost.enabled = false;
+            counterfactualGhost.enabled = false;
         }
     }
 
@@ -290,7 +639,10 @@ public class AttributionExplorer : MonoBehaviour
 
     Vector2 GradP(Vector2 x)
     {
-        var X = new float[1, 2]; X[0, 0] = x.x; X[0, 1] = x.y;
+        var X = new float[1, 2];
+        X[0, 0] = x.x;
+        X[0, 1] = x.y;
+
         var (_, P) = mlp.Forward(X, null, train: false);
         float p = Mathf.Clamp01(P[0, 0]);
         float dpdz = p * (1f - p);
@@ -299,7 +651,9 @@ public class AttributionExplorer : MonoBehaviour
         var Lout = mlp.Ls[Llast];
         int H = Lout.W.GetLength(0);
         float[] gA = new float[H];
-        for (int j = 0; j < H; j++) gA[j] = dpdz * Lout.W[j, 0];
+
+        for (int j = 0; j < H; j++)
+            gA[j] = dpdz * Lout.W[j, 0];
 
         for (int l = Llast - 1; l >= 0; l--)
         {
@@ -311,12 +665,18 @@ public class AttributionExplorer : MonoBehaviour
             for (int j = 0; j < outDim; j++)
             {
                 float z = L.Z[0, j];
-                if (mlp.activation == MLP_Capacity.Act.ReLU) actp[j] = z > 0f ? 1f : 0f;
-                else { float a = L.A[0, j]; actp[j] = 1f - a * a; }
+                if (mlp.activation == MLP_Capacity.Act.ReLU)
+                    actp[j] = z > 0f ? 1f : 0f;
+                else
+                {
+                    float a = L.A[0, j];
+                    actp[j] = 1f - a * a;
+                }
             }
 
             float[] gZ = new float[outDim];
-            for (int j = 0; j < outDim; j++) gZ[j] = gA[j] * actp[j];
+            for (int j = 0; j < outDim; j++)
+                gZ[j] = gA[j] * actp[j];
 
             float[] gAprev = new float[inDim];
             for (int i = 0; i < inDim; i++)
@@ -324,8 +684,10 @@ public class AttributionExplorer : MonoBehaviour
                     gAprev[i] += gZ[j] * L.W[i, j];
 
             gA = gAprev;
-            if (l == 0) return new Vector2(gA[0], gA[1]);
+            if (l == 0)
+                return new Vector2(gA[0], gA[1]);
         }
+
         return Vector2.zero;
     }
 
@@ -340,18 +702,34 @@ public class AttributionExplorer : MonoBehaviour
             accum += g;
         }
         Vector2 avgGrad = accum / Mathf.Max(1, mSteps);
-        return new Vector2((x.x - baseline.x) * avgGrad.x, (x.y - baseline.y) * avgGrad.y);
+        return new Vector2(
+            (x.x - baseline.x) * avgGrad.x,
+            (x.y - baseline.y) * avgGrad.y
+        );
     }
 
     void DrawGradArrow(Vector2 x, Vector2 g)
     {
         if (!gradArrow) return;
-        float len = g.magnitude; if (len < 1e-6f) { gradArrow.positionCount = 0; return; }
+
+        float len = g.magnitude;
+        if (len < 1e-6f)
+        {
+            gradArrow.positionCount = 0;
+            return;
+        }
+
         Vector2 dir = g / len;
         float worldSize = Mathf.Max(wmax.x - wmin.x, wmax.y - wmin.y);
         float scale = arrowLength * worldSize;
+
         Vector3 a = new Vector3(x.x, x.y, 0f);
-        Vector3 b = new Vector3(x.x + dir.x * scale, x.y + dir.y * scale, 0f);
+        Vector3 b = new Vector3(
+            x.x + dir.x * scale,
+            x.y + dir.y * scale,
+            0f
+        );
+
         gradArrow.positionCount = 2;
         gradArrow.SetPosition(0, a);
         gradArrow.SetPosition(1, b);
@@ -362,24 +740,32 @@ public class AttributionExplorer : MonoBehaviour
         int K = 128;
         double S00 = 0, S01 = 0, S02 = 0, S11 = 0, S12 = 0, S22 = 0;
         double T0 = 0, T1 = 0, T2 = 0;
+
         for (int i = 0; i < K; i++)
         {
             Vector2 xi = x + sigma * RandN2();
-            float[,] Xin = new float[1, 2]; Xin[0, 0] = xi.x; Xin[0, 1] = xi.y;
+            float[,] Xin = new float[1, 2];
+            Xin[0, 0] = xi.x;
+            Xin[0, 1] = xi.y;
+
             float p = mlp.Forward(Xin, null, train: false).pred[0, 0];
             double w = Math.Exp(-((xi - x).sqrMagnitude) / (2.0 * sigma * sigma));
             double z0 = 1.0, z1 = xi.x, z2 = xi.y;
+
             S00 += w * z0 * z0; S01 += w * z0 * z1; S02 += w * z0 * z2;
             S11 += w * z1 * z1; S12 += w * z1 * z2; S22 += w * z2 * z2;
             T0 += w * z0 * p; T1 += w * z1 * p; T2 += w * z2 * p;
         }
+
         double[,] S = { { S00, S01, S02 }, { S01, S11, S12 }, { S02, S12, S22 } };
         double[] T = { T0, T1, T2 };
         double[] beta = Solve3x3(S, T); // [b0, bx, by]
 
-        if (!surrogateLine) { return; }
+        if (!surrogateLine) return;
+
         double bx = beta[1], by = beta[2], b0 = beta[0] - 0.5;
-        Vector2 pA, pB; bool ok = LineWithinBounds((float)bx, (float)by, (float)b0, out pA, out pB);
+        Vector2 pA, pB;
+        bool ok = LineWithinBounds((float)bx, (float)by, (float)b0, out pA, out pB);
         if (ok)
         {
             surrogateLine.widthMultiplier = lineWidth;
@@ -387,7 +773,10 @@ public class AttributionExplorer : MonoBehaviour
             surrogateLine.SetPosition(0, new Vector3(pA.x, pA.y, 0f));
             surrogateLine.SetPosition(1, new Vector3(pB.x, pB.y, 0f));
         }
-        else surrogateLine.positionCount = 0;
+        else
+        {
+            surrogateLine.positionCount = 0;
+        }
     }
 
     Vector2 CounterfactualToBoundary(Vector2 x0, int steps, float alpha)
@@ -395,11 +784,17 @@ public class AttributionExplorer : MonoBehaviour
         Vector2 x = x0;
         for (int t = 0; t < steps; t++)
         {
-            float p = mlp.Forward(new float[,] { { x.x, x.y } }, null, false).pred[0, 0];
+            float p = mlp.Forward(
+                new float[,] { { x.x, x.y } }, null, false
+            ).pred[0, 0];
+
             Vector2 g = GradP(x);
             float g2 = g.sqrMagnitude + 1e-8f;
             x -= alpha * ((p - 0.5f) / g2) * g;
-            x = new Vector2(Mathf.Clamp(x.x, wmin.x, wmax.x), Mathf.Clamp(x.y, wmin.y, wmax.y));
+            x = new Vector2(
+                Mathf.Clamp(x.x, wmin.x, wmax.x),
+                Mathf.Clamp(x.y, wmin.y, wmax.y)
+            );
         }
         return x;
     }
@@ -407,16 +802,21 @@ public class AttributionExplorer : MonoBehaviour
     void DrawCounterfactual(Vector2 x, Vector2 cf)
     {
         if (!counterfactualGhost) return;
+
         counterfactualGhost.enabled = true;
         counterfactualGhost.transform.position = new Vector3(cf.x, cf.y, 0f);
-        counterfactualGhost.transform.localScale = Vector3.one * (selectedDotScale * 0.9f);
+        counterfactualGhost.transform.localScale =
+            Vector3.one * (selectedDotScale * 0.9f);
     }
 
     // ---- math/util ----
+
     static Vector2 RandN2()
     {
-        float u = UnityEngine.Random.value, v = UnityEngine.Random.value;
-        float r = Mathf.Sqrt(-2f * Mathf.Log(1 - u)); float th = 2 * Mathf.PI * v;
+        float u = UnityEngine.Random.value;
+        float v = UnityEngine.Random.value;
+        float r = Mathf.Sqrt(-2f * Mathf.Log(1 - u));
+        float th = 2 * Mathf.PI * v;
         return new Vector2(r * Mathf.Cos(th), r * Mathf.Sin(th));
     }
 
@@ -425,29 +825,211 @@ public class AttributionExplorer : MonoBehaviour
         double a = A[0, 0], b01 = A[0, 1], c = A[0, 2];
         double d = A[1, 0], e = A[1, 1], f = A[1, 2];
         double g = A[2, 0], h = A[2, 1], i = A[2, 2];
-        double det = a * (e * i - f * h) - b01 * (d * i - f * g) + c * (d * h - e * g);
+        double det = a * (e * i - f * h)
+                     - b01 * (d * i - f * g)
+                     + c * (d * h - e * g);
         if (Math.Abs(det) < 1e-9) return new double[] { 0, 0, 0 };
         double invDet = 1.0 / det;
+
         double[,] inv = new double[3, 3];
-        inv[0, 0] = (e * i - f * h) * invDet; inv[0, 1] = -(b01 * i - c * h) * invDet; inv[0, 2] = (b01 * f - c * e) * invDet;
-        inv[1, 0] = -(d * i - f * g) * invDet; inv[1, 1] = (a * i - c * g) * invDet; inv[1, 2] = -(a * f - c * d) * invDet;
-        inv[2, 0] = (d * h - e * g) * invDet; inv[2, 1] = -(a * h - b01 * g) * invDet; inv[2, 2] = (a * e - b01 * d) * invDet;
+        inv[0, 0] = (e * i - f * h) * invDet;
+        inv[0, 1] = -(b01 * i - c * h) * invDet;
+        inv[0, 2] = (b01 * f - c * e) * invDet;
+        inv[1, 0] = -(d * i - f * g) * invDet;
+        inv[1, 1] = (a * i - c * g) * invDet;
+        inv[1, 2] = -(a * f - c * d) * invDet;
+        inv[2, 0] = (d * h - e * g) * invDet;
+        inv[2, 1] = -(a * h - b01 * g) * invDet;
+        inv[2, 2] = (a * e - b01 * d) * invDet;
+
         double[] x = new double[3];
-        for (int r = 0; r < 3; r++) { x[r] = inv[r, 0] * b[0] + inv[r, 1] * b[1] + inv[r, 2] * b[2]; }
+        for (int r = 0; r < 3; r++)
+            x[r] = inv[r, 0] * b[0]
+                   + inv[r, 1] * b[1]
+                   + inv[r, 2] * b[2];
+
         return x;
     }
 
     bool LineWithinBounds(float bx, float by, float b0, out Vector2 pA, out Vector2 pB)
     {
-        pA = Vector2.zero; pB = Vector2.zero; int hit = 0;
-        if (Mathf.Abs(by) > 1e-6f) { float y = (-(b0 + bx * wmin.x)) / by; if (y >= wmin.y && y <= wmax.y) { if (hit == 0) pA = new Vector2(wmin.x, y); else pB = new Vector2(wmin.x, y); hit++; } }
-        if (Mathf.Abs(by) > 1e-6f) { float y = (-(b0 + bx * wmax.x)) / by; if (y >= wmin.y && y <= wmax.y) { if (hit == 0) pA = new Vector2(wmax.x, y); else pB = new Vector2(wmax.x, y); hit++; } }
-        if (Mathf.Abs(bx) > 1e-6f) { float x = (-(b0 + by * wmin.y)) / bx; if (x >= wmin.x && x <= wmax.x) { if (hit == 0) pA = new Vector2(x, wmin.y); else pB = new Vector2(x, wmin.y); hit++; } }
-        if (Mathf.Abs(bx) > 1e-6f) { float x = (-(b0 + by * wmax.y)) / bx; if (x >= wmin.x && x <= wmax.x) { if (hit == 0) pA = new Vector2(x, wmax.y); else pB = new Vector2(x, wmax.y); hit++; } }
+        pA = Vector2.zero;
+        pB = Vector2.zero;
+        int hit = 0;
+
+        if (Mathf.Abs(by) > 1e-6f)
+        {
+            float y = (-(b0 + bx * wmin.x)) / by;
+            if (y >= wmin.y && y <= wmax.y)
+            {
+                if (hit == 0) pA = new Vector2(wmin.x, y);
+                else pB = new Vector2(wmin.x, y);
+                hit++;
+            }
+        }
+
+        if (Mathf.Abs(by) > 1e-6f)
+        {
+            float y = (-(b0 + bx * wmax.x)) / by;
+            if (y >= wmin.y && y <= wmax.y)
+            {
+                if (hit == 0) pA = new Vector2(wmax.x, y);
+                else pB = new Vector2(wmax.x, y);
+                hit++;
+            }
+        }
+
+        if (Mathf.Abs(bx) > 1e-6f)
+        {
+            float x = (-(b0 + by * wmin.y)) / bx;
+            if (x >= wmin.x && x <= wmax.x)
+            {
+                if (hit == 0) pA = new Vector2(x, wmin.y);
+                else pB = new Vector2(x, wmin.y);
+                hit++;
+            }
+        }
+
+        if (Mathf.Abs(bx) > 1e-6f)
+        {
+            float x = (-(b0 + by * wmax.y)) / bx;
+            if (x >= wmin.x && x <= wmax.x)
+            {
+                if (hit == 0) pA = new Vector2(x, wmax.y);
+                else pB = new Vector2(x, wmax.y);
+                hit++;
+            }
+        }
+
         return hit >= 2;
     }
 
-    float Acc(float[,] P, float[,] Y, float thr) { int N = P.GetLength(0), ok = 0; for (int i = 0; i < N; i++) { int h = P[i, 0] >= thr ? 1 : 0; int y = Y[i, 0] > 0.5f ? 1 : 0; if (h == y) ok++; } return ok / (float)Mathf.Max(1, N); }
-    int[] SampleBatch(int bs, int total) { var set = new HashSet<int>(); while (set.Count < bs) set.Add(rnd.Next(total)); var arr = new int[bs]; int k = 0; foreach (var i in set) arr[k++] = i; return arr; }
-    (float[,], float[,]) Gather(int[] idx, float[,] X, float[,] Y) { var Xb = new float[idx.Length, 2]; var Yb = new float[idx.Length, 1]; for (int r = 0; r < idx.Length; r++) { int i = idx[r]; Xb[r, 0] = X[i, 0]; Xb[r, 1] = X[i, 1]; Yb[r, 0] = Y[i, 0]; } return (Xb, Yb); }
+    float Acc(float[,] P, float[,] Y, float thr)
+    {
+        int N = P.GetLength(0);
+        int ok = 0;
+        for (int i = 0; i < N; i++)
+        {
+            int h = P[i, 0] >= thr ? 1 : 0;
+            int y = Y[i, 0] > 0.5f ? 1 : 0;
+            if (h == y) ok++;
+        }
+        return ok / (float)Mathf.Max(1, N);
+    }
+
+    int[] SampleBatch(int bs, int total)
+    {
+        var set = new HashSet<int>();
+        while (set.Count < bs) set.Add(rnd.Next(total));
+        var arr = new int[bs];
+        int k = 0;
+        foreach (var i in set) arr[k++] = i;
+        return arr;
+    }
+
+    (float[,], float[,]) Gather(int[] idx, float[,] X, float[,] Y)
+    {
+        var Xb = new float[idx.Length, 2];
+        var Yb = new float[idx.Length, 1];
+
+        for (int r = 0; r < idx.Length; r++)
+        {
+            int i = idx[r];
+            Xb[r, 0] = X[i, 0];
+            Xb[r, 1] = X[i, 1];
+            Yb[r, 0] = Y[i, 0];
+        }
+        return (Xb, Yb);
+    }
+
+    // ---------- Gamification + F helpers ----------
+
+    void RegisterExploration(string key)
+    {
+        if (_tracker == null)
+            _tracker = UnityEngine.Object.FindFirstObjectByType<ObjectiveTracker>();
+        if (_tracker == null) return;
+
+        if (_explored.Add(key))
+            _tracker.ReportTriedVariant(key);
+    }
+
+    void ReportCounterfactualGenerated()
+    {
+        if (_tracker == null)
+            _tracker = UnityEngine.Object.FindFirstObjectByType<ObjectiveTracker>();
+        _tracker?.ReportAction("counterfactual_generate");
+    }
+
+    void ReportMetricsToTrackerFromCurrent()
+    {
+        float F = ComputeFaithfulnessFromCurrent();
+
+        if (_tracker == null)
+            _tracker = UnityEngine.Object.FindFirstObjectByType<ObjectiveTracker>();
+        if (_tracker != null)
+            _tracker.ReportFaithfulness(F);
+    }
+
+    void ReportMetricsToTracker(float genScore)
+    {
+        float F = Mathf.Clamp01(genScore);
+
+        if (_tracker == null)
+            _tracker = UnityEngine.Object.FindFirstObjectByType<ObjectiveTracker>();
+        if (_tracker != null)
+            _tracker.ReportFaithfulness(F);
+    }
+
+    float ComputeFaithfulnessFromCurrent()
+    {
+        if (mlp == null || Xtr == null || Ytr == null || Xval == null || Yval == null)
+            return 0f;
+
+        var (ltr, Ptr) = mlp.Forward(Xtr, Ytr, train: false);
+        var (lva, Pva) = mlp.Forward(Xval, Yval, train: false);
+
+        float atr = Acc(Ptr, Ytr, 0.5f);
+        float ava = Acc(Pva, Yval, 0.5f);
+        float gap = Mathf.Max(0f, atr - ava);
+        float score = ava - 0.5f * gap;
+
+        return Mathf.Clamp01(score);
+    }
+
+    void LogFaithfulnessSnapshot()
+    {
+        float F = ComputeFaithfulnessFromCurrent();
+
+        EventLogger.Instance?.LogEvent(
+            eventType: "FaithfulnessUpdated",
+            key: SceneManager.GetActiveScene().name,
+            fScore: F
+        );
+    }
+
+    // ---------- Public hook for S6 completion ----------
+
+    public void OnSceneCompleted()
+    {
+        if (_tracker == null)
+            _tracker = UnityEngine.Object.FindFirstObjectByType<ObjectiveTracker>();
+        _tracker?.ReportSceneFinish();
+
+        string sceneId = SceneManager.GetActiveScene().name;
+        float finalF = ComputeFaithfulnessFromCurrent();
+
+        EventLogger.Instance?.LogEvent(
+            eventType: "RunCompleted",
+            key: sceneId,
+            value: "success",
+            fScore: finalF
+        );
+
+        CrossSceneComparisonManager.Instance?.RegisterRun(
+            sceneId: sceneId,
+            fScore: finalF,
+            success: true
+        );
+    }
 }

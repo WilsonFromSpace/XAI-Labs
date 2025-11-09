@@ -14,10 +14,10 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   objectiveId: S3_TRY3
   sceneName: S3_Activations
-  title: Try 3 activations
+  title: Try 15 activations
   type: 4
-  threshold: 3
+  threshold: 0.8
   actionKey: 
-  actionTarget: 10
+  actionTarget: 15
   onActivateStory: 
   onCompleteToast: Activation sweep complete.
