@@ -1,6 +1,8 @@
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
+using System.Text;
 using UnityEngine;
 
 public class CrossSceneComparisonManager : MonoBehaviour
@@ -13,7 +15,7 @@ public class CrossSceneComparisonManager : MonoBehaviour
         public string sceneId;
         public int runs;
         public int successes;
-        public float bestF = -1f;     // -1 = no F recorded yet
+        public float bestF = -1f; // -1 = no F recorded yet
         public float lastF = -1f;
 
         public float SuccessRate => runs > 0 ? (float)successes / runs : 0f;
@@ -60,7 +62,7 @@ public class CrossSceneComparisonManager : MonoBehaviour
             if (F > s.bestF) s.bestF = F;
         }
 
-        // Also mirror into EventLogger for traceability
+        // Mirror into EventLogger for traceability
         EventLogger.Instance?.LogEvent(
             eventType: "RunSummary",
             key: sceneId,
@@ -73,5 +75,46 @@ public class CrossSceneComparisonManager : MonoBehaviour
     public IEnumerable<SceneStats> GetAllStats()
     {
         return _stats.Values.OrderBy(s => s.sceneId);
+    }
+
+    /// <summary>
+    /// Export aggregated faithfulness + success metrics to CSV for thesis appendix.
+    /// File: faithfulness_results.csv in Application.persistentDataPath.
+    /// </summary>
+    public void SaveToCsv()
+    {
+        try
+        {
+            var path = Path.Combine(Application.persistentDataPath, "faithfulness_results.csv");
+            var sb = new StringBuilder();
+
+            sb.AppendLine("sceneId;runs;successes;successRate;bestF;lastF");
+
+            foreach (var s in GetAllStats())
+            {
+                sb.AppendLine(
+                    $"{s.sceneId};" +
+                    $"{s.runs};" +
+                    $"{s.successes};" +
+                    $"{s.SuccessRate:0.000};" +
+                    $"{(s.bestF < 0 ? -1f : s.bestF):0.000};" +
+                    $"{(s.lastF < 0 ? -1f : s.lastF):0.000}"
+                );
+            }
+
+            File.WriteAllText(path, sb.ToString(), Encoding.UTF8);
+
+            EventLogger.Instance?.LogEvent(
+                eventType: "CrossSceneCsvExport",
+                key: "faithfulness_results.csv",
+                value: path
+            );
+
+            Debug.Log("[CrossSceneComparisonManager] Saved CSV to: " + path);
+        }
+        catch (Exception e)
+        {
+            Debug.LogWarning("[CrossSceneComparisonManager] Failed to save CSV: " + e.Message);
+        }
     }
 }

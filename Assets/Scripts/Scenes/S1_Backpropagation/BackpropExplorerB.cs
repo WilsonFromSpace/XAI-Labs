@@ -6,6 +6,9 @@ using System.Collections.Generic;
 
 public class BackpropExplorerB : MonoBehaviour
 {
+    private const string SCENE_ID = "S1_Backprop";
+    private const float SUCCESS_F_THRESHOLD = 0.85f; // threshold for "successful" run
+
     [Header("Refs")]
     public Dataset2D dataset;                 // assign asset; we clone it at runtime
     public DecisionFieldRenderer field;
@@ -62,11 +65,15 @@ public class BackpropExplorerB : MonoBehaviour
 
     void Start()
     {
-        // Log scene start
+        // Scene start logging
         EventLogger.Instance?.LogEvent(
             eventType: "SceneStart",
-            key: UnityEngine.SceneManagement.SceneManager.GetActiveScene().name
+            key: SCENE_ID
         );
+        EvalLogger.Instance?.Info("SceneStart_S1", new Dictionary<string, object>
+        {
+            { "sceneId", SCENE_ID }
+        });
 
         // Make a runtime copy and randomize every play
         if (dataset == null)
@@ -81,22 +88,38 @@ public class BackpropExplorerB : MonoBehaviour
         }
 
         // Init model: 2→3→1, linear output + BCE, hidden activation from dropdown
-        mlp = new MLP(2, 3, 1, seed: UnityEngine.Random.Range(1, 1_000_000)) { lossType = LossType.BCE };
+        mlp = new MLP(2, 3, 1, seed: UnityEngine.Random.Range(1, 1_000_000))
+        {
+            lossType = LossType.BCE
+        };
         mlp.activation = (Act)drpActivation.value;
 
         // UI hooks
         btnStep.onClick.AddListener(StepTrain);
 
-        tglAuto.onValueChanged.AddListener(v => autoTrain = v);
+        tglAuto.onValueChanged.AddListener(v =>
+        {
+            autoTrain = v;
+            EvalLogger.Instance?.ActionEvent("S1_ToggleAuto", new Dictionary<string, object>
+            {
+                { "isOn", v }
+            });
+        });
 
         sldLR.onValueChanged.AddListener(v =>
         {
             mlp.lr = v;
+
             EventLogger.Instance?.LogEvent(
                 eventType: "ParamChange",
                 key: "learning_rate",
                 value: v.ToString("F4", System.Globalization.CultureInfo.InvariantCulture)
             );
+
+            EvalLogger.Instance?.ActionEvent("S1_ChangeLR", new Dictionary<string, object>
+            {
+                { "lr", v }
+            });
         });
         mlp.lr = sldLR.value;
 
@@ -106,8 +129,15 @@ public class BackpropExplorerB : MonoBehaviour
         if (sldBatch) sldBatch.onValueChanged.AddListener(_ => UpdateBatchLabel());
         UpdateBatchLabel();
 
-        if (btnReset) btnReset.onClick.AddListener(ResetModel);
-        if (btnShuffle) btnShuffle.onClick.AddListener(ShuffleData);
+        if (btnReset) btnReset.onClick.AddListener(() => {
+            RecordRunSummary("Reset");
+            ResetModel();
+        });
+
+        if (btnShuffle) btnShuffle.onClick.AddListener(() => {
+            RecordRunSummary("Shuffle");
+            ShuffleData();
+        });
 
         X = dataset.XMatrix();
         Y = dataset.YMatrix();
@@ -156,8 +186,25 @@ public class BackpropExplorerB : MonoBehaviour
         // shortcuts
         if (Input.GetKeyDown(KeyCode.Space)) StepTrain();
         if (Input.GetKeyDown(KeyCode.A)) tglAuto.isOn = !tglAuto.isOn;
-        if (Input.GetKeyDown(KeyCode.R)) ResetModel();
-        if (Input.GetKeyDown(KeyCode.S)) ShuffleData();
+        if (Input.GetKeyDown(KeyCode.R))
+        {
+            RecordRunSummary("Reset_Key");
+            ResetModel();
+        }
+        if (Input.GetKeyDown(KeyCode.S))
+        {
+            RecordRunSummary("Shuffle_Key");
+            ShuffleData();
+        }
+    }
+
+    void OnDestroy()
+    {
+        // If player leaves the scene after interacting, record final run summary once.
+        if (stepCount > 0)
+        {
+            RecordRunSummary("SceneExit");
+        }
     }
 
     void OnActChanged(int idx)
@@ -179,6 +226,11 @@ public class BackpropExplorerB : MonoBehaviour
             key: "activation",
             value: ((Act)idx).ToString()
         );
+
+        EvalLogger.Instance?.ActionEvent("S1_ChangeActivation", new Dictionary<string, object>
+        {
+            { "activation", ((Act)idx).ToString() }
+        });
     }
 
     void SpawnPoints()
@@ -243,17 +295,22 @@ public class BackpropExplorerB : MonoBehaviour
 
         prevLoss = loss;
 
-        // Gamification: count action + update F
+        // Gamification: action + updated faithfulness
         var tracker = UnityEngine.Object.FindFirstObjectByType<ObjectiveTracker>();
         tracker?.ReportAction("weight_adjust");
         ReportFaithfulnessToTracker();
 
-        // Logging: one line per step
+        // Logging: per-step
         EventLogger.Instance?.LogEvent(
             eventType: "StepTrain",
             key: "step",
             value: stepCount.ToString()
         );
+        EvalLogger.Instance?.Metric("S1_StepTrain", new Dictionary<string, object>
+        {
+            { "step", stepCount },
+            { "loss", loss }
+        });
     }
 
     void RedrawField() => field.Redraw(WorldToProb);
@@ -289,14 +346,14 @@ public class BackpropExplorerB : MonoBehaviour
 
     void UpdateBatchLabel()
     {
-        if (txtBatch == null) return;
+        if (txtBatch == null || sldBatch == null) return;
         int bs = (int)sldBatch.value;
         txtBatch.text = $"Batch: {bs}";
     }
 
     void PushLossToChart()
     {
-        if (lossChart == null) return;
+        if (lossChart == null || X == null || Y == null) return;
         var (loss, _) = mlp.Forward(X, Y);
         lossChart.Push(loss);
     }
@@ -340,6 +397,7 @@ public class BackpropExplorerB : MonoBehaviour
         ReportFaithfulnessToTracker();
 
         EventLogger.Instance?.LogEvent("ResetPressed");
+        EvalLogger.Instance?.ActionEvent("S1_Reset", null);
     }
 
     void ShuffleData()
@@ -360,6 +418,7 @@ public class BackpropExplorerB : MonoBehaviour
         ReportFaithfulnessToTracker();
 
         EventLogger.Instance?.LogEvent("ShuffleData");
+        EvalLogger.Instance?.ActionEvent("S1_ShuffleData", null);
     }
 
     void MarkMistakes()
@@ -450,16 +509,50 @@ public class BackpropExplorerB : MonoBehaviour
 
     void ReportFaithfulnessToTracker()
     {
-        var tracker = UnityEngine.Object.FindFirstObjectByType<ObjectiveTracker>();
-        if (tracker == null) return;
-
         float F = ComputeFaithfulness();
-        tracker.ReportFaithfulness(F);
+
+        var tracker = UnityEngine.Object.FindFirstObjectByType<ObjectiveTracker>();
+        tracker?.ReportFaithfulness(F);
 
         // Log faithfulness snapshot
         EventLogger.Instance?.LogEvent(
             eventType: "FaithfulnessUpdated",
             fScore: F
+        );
+        EvalLogger.Instance?.Metric("S1_FaithfulnessUpdated", new Dictionary<string, object>
+        {
+            { "fScore", F }
+        });
+    }
+
+    /// <summary>
+    /// Records a summary of the current run (if there was activity) into:
+    /// - CrossSceneComparisonManager (for cross-scene stats)
+    /// - EvalLogger / EventLogger (for thesis evaluation logs)
+    /// </summary>
+    void RecordRunSummary(string reason)
+    {
+        if (stepCount <= 0 || mlp == null || X == null || Y == null)
+            return; // no meaningful run yet
+
+        float F = ComputeFaithfulness();
+        bool success = F >= SUCCESS_F_THRESHOLD;
+
+        CrossSceneComparisonManager.Instance?.RegisterRun(SCENE_ID, F, success);
+
+        EvalLogger.Instance?.Metric("S1_RunSummary", new Dictionary<string, object>
+        {
+            { "fScore", F },
+            { "success", success },
+            { "reason", reason },
+            { "steps", stepCount }
+        });
+
+        EventLogger.Instance?.LogEvent(
+            eventType: "RunSummaryLocal",
+            key: reason,
+            fScore: F,
+            extra: $"scene={SCENE_ID};success={success};steps={stepCount}"
         );
     }
 }

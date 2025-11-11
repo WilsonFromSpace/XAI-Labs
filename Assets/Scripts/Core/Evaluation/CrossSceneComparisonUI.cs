@@ -24,11 +24,14 @@ public class CrossSceneComparisonUI : MonoBehaviour
             var row = Instantiate(rowPrefab, tableRoot);
             var texts = row.GetComponentsInChildren<TMP_Text>();
 
-            // assume order: Scene | Runs | SuccessRate | BestF
-            texts[0].text = s.sceneId;
-            texts[1].text = s.runs.ToString();
-            texts[2].text = (s.SuccessRate * 100f).ToString("F0") + " %";
-            texts[3].text = s.bestF < 0 ? "-" : s.bestF.ToString("F3");
+            // expected order: Scene | Runs | SuccessRate | BestF
+            if (texts.Length >= 4)
+            {
+                texts[0].text = s.sceneId;
+                texts[1].text = s.runs.ToString();
+                texts[2].text = (s.SuccessRate * 100f).ToString("F0") + " %";
+                texts[3].text = s.bestF < 0 ? "-" : s.bestF.ToString("F3");
+            }
         }
     }
 }

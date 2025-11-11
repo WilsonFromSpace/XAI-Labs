@@ -7,6 +7,9 @@ using System.Globalization;
 
 public class CapacityArenaExplorer : MonoBehaviour
 {
+    private const string SCENE_ID = "S5_CapacityRegularization";
+    private const float SUCCESS_F_THRESHOLD = 0.85f;
+
     [Header("Data & World")]
     public Dataset2D dataset;
     [Range(0.05f, 0.5f)] public float valSplit = 0.25f;
@@ -34,7 +37,7 @@ public class CapacityArenaExplorer : MonoBehaviour
     public DropoutRainPanel dropoutRain;
     public GapGaugePanel gapGauge;
 
-    [Header("Overlays (new)")]
+    [Header("Overlays")]
     public DecisionContourPanel decision;              // world overlay
     public bool highlightMistakes = true;
     public Color mistakeColor = new Color(1f, 0.85f, 0.2f, 1f);
@@ -42,27 +45,29 @@ public class CapacityArenaExplorer : MonoBehaviour
     [Range(0.06f, 0.25f)] public float mistakeDotScale = 0.13f;
 
     // internals
-    MLP_Capacity mlp;
-    float[,] Xtr, Ytr, Xval, Yval;
-    readonly List<SpriteRenderer> dotSR = new();
-    System.Random rnd = new System.Random(123);
-    bool auto = false;
-    float t = 0f;
-    const float dt = 0.05f;
-    Vector2 wmin, wmax;
-    int stepCount = 0;
+    private MLP_Capacity mlp;
+    private float[,] Xtr, Ytr, Xval, Yval;
+    private readonly List<SpriteRenderer> dotSR = new();
+    private System.Random rnd = new System.Random(123);
+    private bool auto = false;
+    private float t = 0f;
+    private const float dt = 0.05f;
+    private Vector2 wmin, wmax;
+    private int stepCount = 0;
+    private float elapsed = 0f;
 
     // Gamification
-    ObjectiveTracker _tracker;
-    readonly HashSet<string> _explored = new HashSet<string>();
+    private ObjectiveTracker _tracker;
+    private readonly HashSet<string> _explored = new HashSet<string>();
 
-    void Start()
+    private void Start()
     {
-        // Log scene start
-        EventLogger.Instance?.LogEvent(
-            eventType: "SceneStart",
-            key: UnityEngine.SceneManagement.SceneManager.GetActiveScene().name
-        );
+        // Scene start logging
+        EventLogger.Instance?.LogEvent("SceneStart", key: SCENE_ID);
+        EvalLogger.Instance?.Info("SceneStart_S5", new Dictionary<string, object>
+        {
+            { "sceneId", SCENE_ID }
+        });
 
         InitData();
         BuildModel();
@@ -73,10 +78,40 @@ public class CapacityArenaExplorer : MonoBehaviour
 
         _tracker = UnityEngine.Object.FindFirstObjectByType<ObjectiveTracker>();
 
-        // Initial metrics -> tracker + log
+        // Initial metrics
         ReportMetricsToTrackerFromCurrent();
         LogFaithfulnessSnapshot();
     }
+
+    private void Update()
+    {
+        elapsed += Time.deltaTime;
+
+        if (!auto) return;
+
+        t += Time.deltaTime;
+        if (t >= dt)
+        {
+            t = 0f;
+            Step();
+            _tracker?.ReportAction("step_train_auto");
+            EventLogger.Instance?.LogEvent("Action", key: "step_train_auto");
+            EvalLogger.Instance?.ActionEvent("S5_StepAuto", new Dictionary<string, object>
+            {
+                { "step", stepCount }
+            });
+        }
+    }
+
+    private void OnDestroy()
+    {
+        if (stepCount > 0)
+        {
+            RecordRunSummary("SceneExit");
+        }
+    }
+
+    // ---------------- Data init ----------------
 
     void InitData()
     {
@@ -141,6 +176,8 @@ public class CapacityArenaExplorer : MonoBehaviour
         if (decision) decision.Configure(wmin, wmax);
     }
 
+    // ---------------- Model ----------------
+
     void BuildModel()
     {
         int H = Mathf.Max(2, (int)sldUnits.value);
@@ -157,17 +194,23 @@ public class CapacityArenaExplorer : MonoBehaviour
         };
     }
 
+    // ---------------- UI Wiring ----------------
+
     void WireUI()
     {
-        // Step button
+        // Step
         btnStep.onClick.AddListener(() =>
         {
             Step();
             _tracker?.ReportAction("step_train");
             EventLogger.Instance?.LogEvent("Action", key: "step_train");
+            EvalLogger.Instance?.ActionEvent("S5_StepManual", new Dictionary<string, object>
+            {
+                { "step", stepCount }
+            });
         });
 
-        // Auto toggle
+        // Auto
         tglAuto.onValueChanged.AddListener(v =>
         {
             auto = v;
@@ -176,9 +219,13 @@ public class CapacityArenaExplorer : MonoBehaviour
                 key: "auto_mode",
                 value: v ? "on" : "off"
             );
+            EvalLogger.Instance?.ActionEvent("S5_ToggleAuto", new Dictionary<string, object>
+            {
+                { "isOn", v }
+            });
         });
 
-        // Minibatch toggle
+        // Minibatch
         tglMinibatch.onValueChanged.AddListener(v =>
         {
             EventLogger.Instance?.LogEvent(
@@ -186,6 +233,10 @@ public class CapacityArenaExplorer : MonoBehaviour
                 key: "minibatch_enabled",
                 value: v ? "true" : "false"
             );
+            EvalLogger.Instance?.ActionEvent("S5_ToggleMinibatch", new Dictionary<string, object>
+            {
+                { "isOn", v }
+            });
         });
 
         // Batch size
@@ -196,9 +247,13 @@ public class CapacityArenaExplorer : MonoBehaviour
                 key: "batch_size",
                 value: ((int)v).ToString()
             );
+            EvalLogger.Instance?.ActionEvent("S5_ChangeBatchSize", new Dictionary<string, object>
+            {
+                { "batchSize", (int)v }
+            });
         });
 
-        // Learning rate
+        // LR
         sldLR.onValueChanged.AddListener(v =>
         {
             mlp.lr = v;
@@ -209,11 +264,16 @@ public class CapacityArenaExplorer : MonoBehaviour
                 key: "learning_rate",
                 value: v.ToString("F4", CultureInfo.InvariantCulture)
             );
+            EvalLogger.Instance?.ActionEvent("S5_ChangeLR", new Dictionary<string, object>
+            {
+                { "lr", v }
+            });
         });
 
         // Rebuild architecture
         btnRebuild.onClick.AddListener(() =>
         {
+            RecordRunSummary("Rebuild");
             BuildModel();
             RedrawAll();
             RegisterExploration("Architecture");
@@ -221,9 +281,10 @@ public class CapacityArenaExplorer : MonoBehaviour
             LogFaithfulnessSnapshot();
 
             EventLogger.Instance?.LogEvent("Action", key: "rebuild_model");
+            EvalLogger.Instance?.ActionEvent("S5_RebuildModel", null);
         });
 
-        // Regularization sliders
+        // Reg sliders
         sldL1.onValueChanged.AddListener(_ =>
         {
             mlp.l1 = sldL1.value;
@@ -237,6 +298,10 @@ public class CapacityArenaExplorer : MonoBehaviour
                 key: "l1",
                 value: sldL1.value.ToString("F4", CultureInfo.InvariantCulture)
             );
+            EvalLogger.Instance?.ActionEvent("S5_ChangeL1", new Dictionary<string, object>
+            {
+                { "l1", sldL1.value }
+            });
         });
 
         sldL2.onValueChanged.AddListener(_ =>
@@ -252,6 +317,10 @@ public class CapacityArenaExplorer : MonoBehaviour
                 key: "l2",
                 value: sldL2.value.ToString("F4", CultureInfo.InvariantCulture)
             );
+            EvalLogger.Instance?.ActionEvent("S5_ChangeL2", new Dictionary<string, object>
+            {
+                { "l2", sldL2.value }
+            });
         });
 
         sldDrop.onValueChanged.AddListener(_ =>
@@ -267,6 +336,10 @@ public class CapacityArenaExplorer : MonoBehaviour
                 key: "dropout_p",
                 value: sldDrop.value.ToString("F3", CultureInfo.InvariantCulture)
             );
+            EvalLogger.Instance?.ActionEvent("S5_ChangeDropout", new Dictionary<string, object>
+            {
+                { "dropout", sldDrop.value }
+            });
         });
 
         // Capacity sliders
@@ -293,6 +366,7 @@ public class CapacityArenaExplorer : MonoBehaviour
         // Reset
         btnReset.onClick.AddListener(() =>
         {
+            RecordRunSummary("Reset");
             BuildModel();
             RedrawAll();
             ReportMetricsToTrackerFromCurrent();
@@ -301,11 +375,13 @@ public class CapacityArenaExplorer : MonoBehaviour
             stepCount = 0;
 
             EventLogger.Instance?.LogEvent("ResetPressed");
+            EvalLogger.Instance?.ActionEvent("S5_Reset", null);
         });
 
         // Shuffle
         btnShuffle.onClick.AddListener(() =>
         {
+            RecordRunSummary("Shuffle");
             InitData();
             ConfigureBounds();
             RedrawAll();
@@ -315,22 +391,11 @@ public class CapacityArenaExplorer : MonoBehaviour
             stepCount = 0;
 
             EventLogger.Instance?.LogEvent("ShuffleData");
+            EvalLogger.Instance?.ActionEvent("S5_ShuffleData", null);
         });
     }
 
-    void Update()
-    {
-        if (!auto) return;
-
-        t += Time.deltaTime;
-        if (t >= dt)
-        {
-            t = 0f;
-            Step();
-            _tracker?.ReportAction("step_train_auto");
-            EventLogger.Instance?.LogEvent("Action", key: "step_train_auto");
-        }
-    }
+    // ---------------- Training ----------------
 
     void Step()
     {
@@ -361,7 +426,13 @@ public class CapacityArenaExplorer : MonoBehaviour
             key: "step",
             value: stepCount.ToString()
         );
+        EvalLogger.Instance?.Metric("S5_StepTrain", new Dictionary<string, object>
+        {
+            { "step", stepCount }
+        });
     }
+
+    // ---------------- Rendering & Metrics ----------------
 
     void RedrawAll()
     {
@@ -386,8 +457,6 @@ public class CapacityArenaExplorer : MonoBehaviour
 
         decision?.Redraw(mlp);
         if (highlightMistakes) UpdateDotErrors();
-
-        // Gamification + F handled in ReportMetricsToTrackerFromCurrent()
     }
 
     void UpdateDotErrors()
@@ -418,8 +487,6 @@ public class CapacityArenaExplorer : MonoBehaviour
             }
         }
     }
-
-    // helpers
 
     float Accuracy(float[,] P, float[,] Y, float thr)
     {
@@ -514,16 +581,29 @@ public class CapacityArenaExplorer : MonoBehaviour
         float atr = Accuracy(Ptr, Ytr, 0.5f);
         float ava = Accuracy(Pva, Yval, 0.5f);
         float gap = Mathf.Max(0f, atr - ava);
-
-        float score = ava - 0.5f * gap; // can be <0, clamp later for F
+        float score = ava - 0.5f * gap;
+        float F = Mathf.Clamp01(score);
 
         if (_tracker == null)
             _tracker = UnityEngine.Object.FindFirstObjectByType<ObjectiveTracker>();
-        if (_tracker != null)
+
+        _tracker?.ReportAccuracy(Mathf.Clamp01(ava));
+        _tracker?.ReportFaithfulness(F);
+
+        EventLogger.Instance?.LogEvent(
+            eventType: "MetricsSnapshot",
+            key: SCENE_ID,
+            fScore: F,
+            extra: $"trainAcc={atr:0.000};valAcc={ava:0.000};gap={gap:0.000};score={score:0.000}"
+        );
+        EvalLogger.Instance?.Metric("S5_MetricsSnapshot", new Dictionary<string, object>
         {
-            float F = Mathf.Clamp01(score); // interpret as F-like [0,1]
-            _tracker.ReportFaithfulness(F);
-        }
+            { "fScore", F },
+            { "trainAcc", atr },
+            { "valAcc", ava },
+            { "gap", gap },
+            { "score", score }
+        });
     }
 
     void LogFaithfulnessSnapshot()
@@ -538,47 +618,98 @@ public class CapacityArenaExplorer : MonoBehaviour
         float ava = Accuracy(Pva, Yval, 0.5f);
         float gap = Mathf.Max(0f, atr - ava);
         float score = ava - 0.5f * gap;
-
         float F = Mathf.Clamp01(score);
 
         EventLogger.Instance?.LogEvent(
             eventType: "FaithfulnessUpdated",
-            key: UnityEngine.SceneManagement.SceneManager.GetActiveScene().name,
+            key: SCENE_ID,
             fScore: F
         );
+        EvalLogger.Instance?.Metric("S5_FaithfulnessUpdated", new Dictionary<string, object>
+        {
+            { "fScore", F }
+        });
     }
 
-    // ---------- Public hook for S5 completion ----------
+    // ---------- Run summary & completion ----------
 
-    public void OnSceneCompleted()
+    void RecordRunSummary(string reason)
     {
-        if (_tracker == null)
-            _tracker = UnityEngine.Object.FindFirstObjectByType<ObjectiveTracker>();
+        if (stepCount <= 0 || mlp == null || Xtr == null || Ytr == null || Xval == null || Yval == null)
+            return;
 
-        _tracker?.ReportSceneFinish();
-
-        string sceneId = UnityEngine.SceneManagement.SceneManager.GetActiveScene().name;
-
-        // Final F based on latest generalization snapshot
         var (ltr, Ptr) = mlp.Forward(Xtr, Ytr, train: false);
         var (lva, Pva) = mlp.Forward(Xval, Yval, train: false);
         float atr = Accuracy(Ptr, Ytr, 0.5f);
         float ava = Accuracy(Pva, Yval, 0.5f);
         float gap = Mathf.Max(0f, atr - ava);
         float score = ava - 0.5f * gap;
-        float finalF = Mathf.Clamp01(score);
+        float F = Mathf.Clamp01(score);
+        bool success = F >= SUCCESS_F_THRESHOLD;
+
+        CrossSceneComparisonManager.Instance?.RegisterRun(SCENE_ID, F, success);
+
+        EvalLogger.Instance?.Metric("S5_RunSummary", new Dictionary<string, object>
+        {
+            { "fScore", F },
+            { "trainAcc", atr },
+            { "valAcc", ava },
+            { "gap", gap },
+            { "score", score },
+            { "success", success },
+            { "reason", reason },
+            { "steps", stepCount },
+            { "elapsedSeconds", elapsed }
+        });
+
+        EventLogger.Instance?.LogEvent(
+            eventType: "RunSummaryLocal",
+            key: reason,
+            fScore: F,
+            extra: $"scene={SCENE_ID};success={success};trainAcc={atr:0.000};valAcc={ava:0.000};gap={gap:0.000};score={score:0.000};steps={stepCount};t={elapsed:0.0}"
+        );
+    }
+
+    // Hook this to your "Next/Done" button in S5.
+    public void OnSceneCompleted()
+    {
+        if (mlp == null || Xtr == null || Ytr == null || Xval == null || Yval == null)
+            return;
+
+        if (_tracker == null)
+            _tracker = UnityEngine.Object.FindFirstObjectByType<ObjectiveTracker>();
+
+        var (ltr, Ptr) = mlp.Forward(Xtr, Ytr, train: false);
+        var (lva, Pva) = mlp.Forward(Xval, Yval, train: false);
+        float atr = Accuracy(Ptr, Ytr, 0.5f);
+        float ava = Accuracy(Pva, Yval, 0.5f);
+        float gap = Mathf.Max(0f, atr - ava);
+        float score = ava - 0.5f * gap;
+        float F = Mathf.Clamp01(score);
+        bool success = F >= SUCCESS_F_THRESHOLD;
+
+        _tracker?.ReportSceneFinish();
+
+        CrossSceneComparisonManager.Instance?.RegisterRun(SCENE_ID, F, success);
+
+        EvalLogger.Instance?.Metric("S5_RunCompleted", new Dictionary<string, object>
+        {
+            { "fScore", F },
+            { "trainAcc", atr },
+            { "valAcc", ava },
+            { "gap", gap },
+            { "score", score },
+            { "success", success },
+            { "steps", stepCount },
+            { "elapsedSeconds", elapsed }
+        });
 
         EventLogger.Instance?.LogEvent(
             eventType: "RunCompleted",
-            key: sceneId,
-            value: "success",
-            fScore: finalF
-        );
-
-        CrossSceneComparisonManager.Instance?.RegisterRun(
-            sceneId: sceneId,
-            fScore: finalF,
-            success: true
+            key: SCENE_ID,
+            value: success ? "success" : "fail",
+            fScore: F,
+            extra: $"trainAcc={atr:0.000};valAcc={ava:0.000};gap={gap:0.000};score={score:0.000};steps={stepCount};t={elapsed:0.0}"
         );
     }
 }

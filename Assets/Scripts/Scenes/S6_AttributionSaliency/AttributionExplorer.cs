@@ -1,15 +1,17 @@
 ﻿using UnityEngine;
 using UnityEngine.UI;
 using TMPro;
-using UnityEngine.SceneManagement;
 using System;
 using System.Collections.Generic;
 using System.Globalization;
 
 /// Scene 6 controller: attribution, surrogates, counterfactuals.
-/// Updated with event logging + cross-scene comparison + gamification glue.
+/// Final version: event logging + EvalLogger + cross-scene comparison + gamification.
 public class AttributionExplorer : MonoBehaviour
 {
+    private const string SCENE_ID = "S6_Attribution";
+    private const float SUCCESS_F_THRESHOLD = 0.85f;
+
     [Header("Data")]
     public Dataset2D_S6 dataset;
     [Range(0.05f, 0.5f)] public float valSplit = 0.25f;
@@ -56,30 +58,32 @@ public class AttributionExplorer : MonoBehaviour
     public Color colorGhost = new Color(1f, 1f, 1f, 0.95f);
 
     // internals
-    MLP_Capacity mlp;
-    float[,] Xtr, Ytr, Xval, Yval;
-    readonly List<SpriteRenderer> dots = new List<SpriteRenderer>();
-    System.Random rnd = new System.Random(7);
+    private MLP_Capacity mlp;
+    private float[,] Xtr, Ytr, Xval, Yval;
+    private readonly List<SpriteRenderer> dots = new List<SpriteRenderer>();
+    private System.Random rnd = new System.Random(7);
 
-    bool auto = false;
-    float tick = 0f;
-    const float dt = 0.05f;
-    int selIndex = -1;
-    Vector2 selPoint;
-    Vector2 wmin, wmax;
-    int stepCount = 0;
+    private bool auto = false;
+    private float tick = 0f;
+    private const float dt = 0.05f;
+    private int selIndex = -1;
+    private Vector2 selPoint;
+    private Vector2 wmin, wmax;
+    private int stepCount = 0;
+    private float elapsed = 0f;
 
     // Gamification
-    ObjectiveTracker _tracker;
-    readonly HashSet<string> _explored = new HashSet<string>();
+    private ObjectiveTracker _tracker;
+    private readonly HashSet<string> _explored = new HashSet<string>();
 
     void Start()
     {
-        // Log scene start
-        EventLogger.Instance?.LogEvent(
-            eventType: "SceneStart",
-            key: SceneManager.GetActiveScene().name
-        );
+        // Scene start logs
+        EventLogger.Instance?.LogEvent("SceneStart", key: SCENE_ID);
+        EvalLogger.Instance?.Info("SceneStart_S6", new Dictionary<string, object>
+        {
+            { "sceneId", SCENE_ID }
+        });
 
         if (!dataset)
             dataset = ScriptableObject.CreateInstance<Dataset2D_S6>();
@@ -95,10 +99,42 @@ public class AttributionExplorer : MonoBehaviour
 
         _tracker = UnityEngine.Object.FindFirstObjectByType<ObjectiveTracker>();
 
-        // Initial metrics -> tracker + F logging
+        // Initial metrics + faithfulness
         ReportMetricsToTrackerFromCurrent();
         LogFaithfulnessSnapshot();
     }
+
+    void Update()
+    {
+        elapsed += Time.deltaTime;
+
+        if (Input.GetMouseButtonDown(0))
+            SelectNearestPointAtMouse();
+
+        if (!auto) return;
+
+        tick += Time.deltaTime;
+        if (tick >= dt)
+        {
+            tick = 0f;
+            Step();
+
+            _tracker?.ReportAction("step_train_auto");
+            EventLogger.Instance?.LogEvent("Action", key: "step_train_auto");
+            EvalLogger.Instance?.ActionEvent("S6_StepAuto", new Dictionary<string, object>
+            {
+                { "step", stepCount }
+            });
+        }
+    }
+
+    void OnDestroy()
+    {
+        if (stepCount > 0)
+            RecordRunSummary("SceneExit");
+    }
+
+    // ---------- UI WIRING ----------
 
     void WireUI()
     {
@@ -110,6 +146,10 @@ public class AttributionExplorer : MonoBehaviour
                 Step();
                 _tracker?.ReportAction("step_train");
                 EventLogger.Instance?.LogEvent("Action", key: "step_train");
+                EvalLogger.Instance?.ActionEvent("S6_StepManual", new Dictionary<string, object>
+                {
+                    { "step", stepCount }
+                });
             });
         }
 
@@ -124,6 +164,10 @@ public class AttributionExplorer : MonoBehaviour
                     key: "auto_mode",
                     value: v ? "on" : "off"
                 );
+                EvalLogger.Instance?.ActionEvent("S6_ToggleAuto", new Dictionary<string, object>
+                {
+                    { "isOn", v }
+                });
             });
         }
 
@@ -138,6 +182,10 @@ public class AttributionExplorer : MonoBehaviour
                     key: "learning_rate",
                     value: v.ToString("F4", CultureInfo.InvariantCulture)
                 );
+                EvalLogger.Instance?.ActionEvent("S6_ChangeLR", new Dictionary<string, object>
+                {
+                    { "lr", v }
+                });
             });
         }
 
@@ -151,6 +199,10 @@ public class AttributionExplorer : MonoBehaviour
                     key: "minibatch_enabled",
                     value: v ? "true" : "false"
                 );
+                EvalLogger.Instance?.ActionEvent("S6_ToggleMinibatch", new Dictionary<string, object>
+                {
+                    { "isOn", v }
+                });
             });
         }
 
@@ -164,46 +216,62 @@ public class AttributionExplorer : MonoBehaviour
                     key: "batch_size",
                     value: ((int)v).ToString()
                 );
+                EvalLogger.Instance?.ActionEvent("S6_ChangeBatchSize", new Dictionary<string, object>
+                {
+                    { "batchSize", (int)v }
+                });
             });
         }
 
-        // Reset = rebuild model only (keep current data)
+        // Reset model (keep data)
         if (btnReset)
         {
             btnReset.onClick.AddListener(() =>
             {
+                RecordRunSummary("Reset");
                 BuildModel();
                 RedrawAll();
                 ReportMetricsToTrackerFromCurrent();
                 LogFaithfulnessSnapshot();
 
+                stepCount = 0;
+
                 EventLogger.Instance?.LogEvent("ResetPressed");
+                EvalLogger.Instance?.ActionEvent("S6_Reset", null);
             });
         }
 
-        // Respawn = randomize dataset, keep current model weights
+        // Respawn = new data, keep model
         if (btnRespawn)
         {
             btnRespawn.onClick.AddListener(() =>
             {
+                RecordRunSummary("Respawn");
                 RandomizeDataset();
                 ReportMetricsToTrackerFromCurrent();
                 LogFaithfulnessSnapshot();
 
+                stepCount = 0;
+
                 EventLogger.Instance?.LogEvent("Action", key: "respawn_dataset");
+                EvalLogger.Instance?.ActionEvent("S6_RespawnDataset", null);
             });
         }
 
-        // Rebuild = randomize dataset AND rebuild model
+        // Rebuild = new data + new model
         if (btnRebuild)
         {
             btnRebuild.onClick.AddListener(() =>
             {
+                RecordRunSummary("Rebuild");
                 RandomizeAndRebuild();
                 ReportMetricsToTrackerFromCurrent();
                 LogFaithfulnessSnapshot();
 
+                stepCount = 0;
+
                 EventLogger.Instance?.LogEvent("Action", key: "rebuild_dataset_model");
+                EvalLogger.Instance?.ActionEvent("S6_RebuildDatasetModel", null);
             });
         }
 
@@ -219,6 +287,10 @@ public class AttributionExplorer : MonoBehaviour
                     key: "show_gradfield",
                     value: v ? "true" : "false"
                 );
+                EvalLogger.Instance?.ActionEvent("S6_ToggleGradField", new Dictionary<string, object>
+                {
+                    { "isOn", v }
+                });
             });
         }
 
@@ -233,6 +305,10 @@ public class AttributionExplorer : MonoBehaviour
                     key: "show_surrogate",
                     value: v ? "true" : "false"
                 );
+                EvalLogger.Instance?.ActionEvent("S6_ToggleSurrogate", new Dictionary<string, object>
+                {
+                    { "isOn", v }
+                });
             });
         }
 
@@ -247,6 +323,10 @@ public class AttributionExplorer : MonoBehaviour
                     key: "show_ig",
                     value: v ? "true" : "false"
                 );
+                EvalLogger.Instance?.ActionEvent("S6_ToggleIG", new Dictionary<string, object>
+                {
+                    { "isOn", v }
+                });
             });
         }
 
@@ -261,10 +341,14 @@ public class AttributionExplorer : MonoBehaviour
                     key: "show_cf",
                     value: v ? "true" : "false"
                 );
+                EvalLogger.Instance?.ActionEvent("S6_ToggleCF", new Dictionary<string, object>
+                {
+                    { "isOn", v }
+                });
             });
         }
 
-        // Attribution hyperparameters
+        // Attribution hyperparams
         if (sldIGSteps)
         {
             sldIGSteps.onValueChanged.AddListener(v =>
@@ -274,6 +358,10 @@ public class AttributionExplorer : MonoBehaviour
                     key: "ig_steps",
                     value: ((int)v).ToString()
                 );
+                EvalLogger.Instance?.ActionEvent("S6_ChangeIGSteps", new Dictionary<string, object>
+                {
+                    { "steps", (int)v }
+                });
             });
         }
 
@@ -286,6 +374,10 @@ public class AttributionExplorer : MonoBehaviour
                     key: "lime_sigma",
                     value: v.ToString("F3", CultureInfo.InvariantCulture)
                 );
+                EvalLogger.Instance?.ActionEvent("S6_ChangeLimeSigma", new Dictionary<string, object>
+                {
+                    { "sigma", v }
+                });
             });
         }
 
@@ -298,6 +390,10 @@ public class AttributionExplorer : MonoBehaviour
                     key: "cf_steps",
                     value: ((int)v).ToString()
                 );
+                EvalLogger.Instance?.ActionEvent("S6_ChangeCFSteps", new Dictionary<string, object>
+                {
+                    { "steps", (int)v }
+                });
             });
         }
 
@@ -310,11 +406,15 @@ public class AttributionExplorer : MonoBehaviour
                     key: "cf_alpha",
                     value: v.ToString("F3", CultureInfo.InvariantCulture)
                 );
+                EvalLogger.Instance?.ActionEvent("S6_ChangeCFAlpha", new Dictionary<string, object>
+                {
+                    { "alpha", v }
+                });
             });
         }
     }
 
-    // ---------- Dataset ops ----------
+    // ---------- DATASET OPS ----------
 
     void GenerateDatasetWithNewSeed()
     {
@@ -428,8 +528,8 @@ public class AttributionExplorer : MonoBehaviour
         wmin = new Vector2(minx, miny) - pad;
         wmax = new Vector2(maxx, maxy) + pad;
 
-        if (decision) decision.Configure(wmin, wmax);
-        if (gradField) gradField.Configure(wmin, wmax);
+        decision?.Configure(wmin, wmax);
+        gradField?.Configure(wmin, wmax);
     }
 
     void ApplyStyleToLines()
@@ -458,23 +558,7 @@ public class AttributionExplorer : MonoBehaviour
         }
     }
 
-    void Update()
-    {
-        if (Input.GetMouseButtonDown(0))
-            SelectNearestPointAtMouse();
-
-        if (!auto) return;
-
-        tick += Time.deltaTime;
-        if (tick >= dt)
-        {
-            tick = 0f;
-            Step();
-
-            _tracker?.ReportAction("step_train_auto");
-            EventLogger.Instance?.LogEvent("Action", key: "step_train_auto");
-        }
-    }
+    // ---------- INTERACTION / SELECTION ----------
 
     void SelectNearestPointAtMouse()
     {
@@ -502,6 +586,11 @@ public class AttributionExplorer : MonoBehaviour
             selPoint = dataset.points[best];
             EmphasizeSelection();
             RedrawAttribution();
+
+            EvalLogger.Instance?.ActionEvent("S6_SelectPoint", new Dictionary<string, object>
+            {
+                { "index", selIndex }
+            });
         }
     }
 
@@ -513,6 +602,8 @@ public class AttributionExplorer : MonoBehaviour
             dots[i].transform.localScale = Vector3.one * s;
         }
     }
+
+    // ---------- TRAINING ----------
 
     void Step()
     {
@@ -545,7 +636,13 @@ public class AttributionExplorer : MonoBehaviour
             key: "step",
             value: stepCount.ToString()
         );
+        EvalLogger.Instance?.Metric("S6_StepTrain", new Dictionary<string, object>
+        {
+            { "step", stepCount }
+        });
     }
+
+    // ---------- RENDER & METRICS ----------
 
     void RedrawAll()
     {
@@ -566,28 +663,23 @@ public class AttributionExplorer : MonoBehaviour
         if (txtScore)
             txtScore.text = $"GENERALIZ-\nATION\nSCORE:\n{score:0.000}";
 
-        if (decision)
-            decision.Redraw(mlp);
+        decision?.Redraw(mlp);
 
         if (tglShowWind && tglShowWind.isOn)
-        {
-            if (gradField) gradField.Redraw(mlp, 12);
-        }
+            gradField?.Redraw(mlp, 12);
         else
-        {
-            if (gradField) gradField.Clear();
-        }
+            gradField?.Clear();
 
         if (selIndex >= 0)
             RedrawAttribution();
 
-        // Metrics + F to tracker
+        // Tracker + EvalLogger snapshot
         ReportMetricsToTracker(score);
     }
 
     void RedrawAttribution()
     {
-        if (selIndex < 0 || selIndex >= dataset.count)
+        if (selIndex < 0 || selIndex >= dataset.count || mlp == null)
             return;
 
         Vector2 g = GradP(selPoint);
@@ -622,12 +714,9 @@ public class AttributionExplorer : MonoBehaviour
             Vector2 cf = CounterfactualToBoundary(selPoint, steps, alpha);
             DrawCounterfactual(selPoint, cf);
 
-            // Gamification + logging
             ReportCounterfactualGenerated();
-            EventLogger.Instance?.LogEvent(
-                eventType: "Action",
-                key: "counterfactual_generate"
-            );
+            EventLogger.Instance?.LogEvent("Action", key: "counterfactual_generate");
+            EvalLogger.Instance?.ActionEvent("S6_GenerateCounterfactual", null);
         }
         else if (counterfactualGhost)
         {
@@ -942,7 +1031,7 @@ public class AttributionExplorer : MonoBehaviour
         return (Xb, Yb);
     }
 
-    // ---------- Gamification + F helpers ----------
+    // ---------- Gamification + Faithfulness helpers ----------
 
     void RegisterExploration(string key)
     {
@@ -967,8 +1056,13 @@ public class AttributionExplorer : MonoBehaviour
 
         if (_tracker == null)
             _tracker = UnityEngine.Object.FindFirstObjectByType<ObjectiveTracker>();
-        if (_tracker != null)
-            _tracker.ReportFaithfulness(F);
+
+        _tracker?.ReportFaithfulness(F);
+
+        EvalLogger.Instance?.Metric("S6_MetricsSnapshot", new Dictionary<string, object>
+        {
+            { "fScore", F }
+        });
     }
 
     void ReportMetricsToTracker(float genScore)
@@ -977,8 +1071,13 @@ public class AttributionExplorer : MonoBehaviour
 
         if (_tracker == null)
             _tracker = UnityEngine.Object.FindFirstObjectByType<ObjectiveTracker>();
-        if (_tracker != null)
-            _tracker.ReportFaithfulness(F);
+
+        _tracker?.ReportFaithfulness(F);
+
+        EvalLogger.Instance?.Metric("S6_MetricsSnapshot", new Dictionary<string, object>
+        {
+            { "fScore", F }
+        });
     }
 
     float ComputeFaithfulnessFromCurrent()
@@ -986,8 +1085,8 @@ public class AttributionExplorer : MonoBehaviour
         if (mlp == null || Xtr == null || Ytr == null || Xval == null || Yval == null)
             return 0f;
 
-        var (ltr, Ptr) = mlp.Forward(Xtr, Ytr, train: false);
-        var (lva, Pva) = mlp.Forward(Xval, Yval, train: false);
+        var (_, Ptr) = mlp.Forward(Xtr, Ytr, train: false);
+        var (_, Pva) = mlp.Forward(Xval, Yval, train: false);
 
         float atr = Acc(Ptr, Ytr, 0.5f);
         float ava = Acc(Pva, Yval, 0.5f);
@@ -1003,33 +1102,70 @@ public class AttributionExplorer : MonoBehaviour
 
         EventLogger.Instance?.LogEvent(
             eventType: "FaithfulnessUpdated",
-            key: SceneManager.GetActiveScene().name,
+            key: SCENE_ID,
             fScore: F
+        );
+        EvalLogger.Instance?.Metric("S6_FaithfulnessUpdated", new Dictionary<string, object>
+        {
+            { "fScore", F }
+        });
+    }
+
+    // ---------- Run summary & completion ----------
+
+    void RecordRunSummary(string reason)
+    {
+        if (stepCount <= 0)
+            return;
+
+        float F = ComputeFaithfulnessFromCurrent();
+        bool success = F >= SUCCESS_F_THRESHOLD;
+
+        CrossSceneComparisonManager.Instance?.RegisterRun(SCENE_ID, F, success);
+
+        EvalLogger.Instance?.Metric("S6_RunSummary", new Dictionary<string, object>
+        {
+            { "fScore", F },
+            { "success", success },
+            { "reason", reason },
+            { "steps", stepCount },
+            { "elapsedSeconds", elapsed }
+        });
+
+        EventLogger.Instance?.LogEvent(
+            eventType: "RunSummaryLocal",
+            key: reason,
+            fScore: F,
+            extra: $"scene={SCENE_ID};success={success};steps={stepCount};t={elapsed:0.0}"
         );
     }
 
-    // ---------- Public hook for S6 completion ----------
-
+    // Hook this to your "Next/Done" button in S6.
     public void OnSceneCompleted()
     {
+        float F = ComputeFaithfulnessFromCurrent();
+        bool success = F >= SUCCESS_F_THRESHOLD;
+
         if (_tracker == null)
             _tracker = UnityEngine.Object.FindFirstObjectByType<ObjectiveTracker>();
         _tracker?.ReportSceneFinish();
 
-        string sceneId = SceneManager.GetActiveScene().name;
-        float finalF = ComputeFaithfulnessFromCurrent();
+        CrossSceneComparisonManager.Instance?.RegisterRun(SCENE_ID, F, success);
+
+        EvalLogger.Instance?.Metric("S6_RunCompleted", new Dictionary<string, object>
+        {
+            { "fScore", F },
+            { "success", success },
+            { "steps", stepCount },
+            { "elapsedSeconds", elapsed }
+        });
 
         EventLogger.Instance?.LogEvent(
             eventType: "RunCompleted",
-            key: sceneId,
-            value: "success",
-            fScore: finalF
-        );
-
-        CrossSceneComparisonManager.Instance?.RegisterRun(
-            sceneId: sceneId,
-            fScore: finalF,
-            success: true
+            key: SCENE_ID,
+            value: success ? "success" : "fail",
+            fScore: F,
+            extra: $"steps={stepCount};t={elapsed:0.0}"
         );
     }
 }

@@ -7,6 +7,9 @@ using System.Globalization;
 
 public class OptimizersExplorer : MonoBehaviour
 {
+    private const string SCENE_ID = "S2_Optimizers";
+    private const float SUCCESS_F_THRESHOLD = 0.85f;
+
     [Header("Refs")]
     public Dataset2D dataset;                 // assign asset; cloned at runtime
     public DecisionFieldRenderer field;       // shows the "focused" model
@@ -46,16 +49,16 @@ public class OptimizersExplorer : MonoBehaviour
     const float dt = 0.05f;
     int stepCount = 0;
 
-    // Gamification
     ObjectiveTracker _tracker;
 
     void Start()
     {
-        // --- Log scene start ---
-        EventLogger.Instance?.LogEvent(
-            eventType: "SceneStart",
-            key: UnityEngine.SceneManagement.SceneManager.GetActiveScene().name
-        );
+        // --- Scene start logging ---
+        EventLogger.Instance?.LogEvent("SceneStart", key: SCENE_ID);
+        EvalLogger.Instance?.Info("SceneStart_S2", new Dictionary<string, object>
+        {
+            { "sceneId", SCENE_ID }
+        });
 
         // dataset runtime clone + random pose
         if (dataset == null)
@@ -73,7 +76,11 @@ public class OptimizersExplorer : MonoBehaviour
 
         // init 3 identical models from same seed/weights
         var seed = UnityEngine.Random.Range(1, 1_000_000);
-        mlpSGD = new MLP(2, 3, 1, seed) { lossType = LossType.BCE, activation = (Act)drpActivation.value };
+        mlpSGD = new MLP(2, 3, 1, seed)
+        {
+            lossType = LossType.BCE,
+            activation = (Act)drpActivation.value
+        };
         mlpMom = CloneMLP(mlpSGD);
         mlpAdam = CloneMLP(mlpSGD);
 
@@ -82,7 +89,6 @@ public class OptimizersExplorer : MonoBehaviour
         optAdam.beta1 = sldAdamB1.value;
         optAdam.beta2 = sldAdamB2.value;
 
-        // Gamification: cache tracker
         _tracker = UnityEngine.Object.FindFirstObjectByType<ObjectiveTracker>();
 
         // --- UI hooks ---
@@ -93,6 +99,10 @@ public class OptimizersExplorer : MonoBehaviour
             Step();
             _tracker?.ReportAction("step_train");
             EventLogger.Instance?.LogEvent("Action", key: "step_train");
+            EvalLogger.Instance?.ActionEvent("S2_StepManual", new Dictionary<string, object>
+            {
+                { "step", stepCount }
+            });
         });
 
         // Auto toggle
@@ -104,6 +114,10 @@ public class OptimizersExplorer : MonoBehaviour
                 key: "auto_mode",
                 value: v ? "on" : "off"
             );
+            EvalLogger.Instance?.ActionEvent("S2_ToggleAuto", new Dictionary<string, object>
+            {
+                { "isOn", v }
+            });
         });
 
         // Focused optimizer (SGD/Mom/Adam)
@@ -122,6 +136,10 @@ public class OptimizersExplorer : MonoBehaviour
                     key: "minibatch_enabled",
                     value: v ? "true" : "false"
                 );
+                EvalLogger.Instance?.ActionEvent("S2_ToggleMinibatch", new Dictionary<string, object>
+                {
+                    { "isOn", v }
+                });
             });
         }
 
@@ -134,6 +152,10 @@ public class OptimizersExplorer : MonoBehaviour
                     key: "batch_size",
                     value: ((int)v).ToString()
                 );
+                EvalLogger.Instance?.ActionEvent("S2_ChangeBatchSize", new Dictionary<string, object>
+                {
+                    { "batchSize", (int)v }
+                });
             });
         }
 
@@ -145,6 +167,10 @@ public class OptimizersExplorer : MonoBehaviour
                 key: "learning_rate",
                 value: v.ToString("F4", CultureInfo.InvariantCulture)
             );
+            EvalLogger.Instance?.ActionEvent("S2_ChangeLR", new Dictionary<string, object>
+            {
+                { "lr", v }
+            });
         });
 
         sldMomentum.onValueChanged.AddListener(v =>
@@ -155,6 +181,10 @@ public class OptimizersExplorer : MonoBehaviour
                 key: "momentum_beta",
                 value: v.ToString("F3", CultureInfo.InvariantCulture)
             );
+            EvalLogger.Instance?.ActionEvent("S2_ChangeMomentum", new Dictionary<string, object>
+            {
+                { "beta", v }
+            });
         });
 
         sldAdamB1.onValueChanged.AddListener(v =>
@@ -165,6 +195,10 @@ public class OptimizersExplorer : MonoBehaviour
                 key: "adam_beta1",
                 value: v.ToString("F3", CultureInfo.InvariantCulture)
             );
+            EvalLogger.Instance?.ActionEvent("S2_ChangeAdamB1", new Dictionary<string, object>
+            {
+                { "beta1", v }
+            });
         });
 
         sldAdamB2.onValueChanged.AddListener(v =>
@@ -175,11 +209,24 @@ public class OptimizersExplorer : MonoBehaviour
                 key: "adam_beta2",
                 value: v.ToString("F3", CultureInfo.InvariantCulture)
             );
+            EvalLogger.Instance?.ActionEvent("S2_ChangeAdamB2", new Dictionary<string, object>
+            {
+                { "beta2", v }
+            });
         });
 
         // Reset & Shuffle
-        btnReset.onClick.AddListener(ResetAll);
-        btnShuffle.onClick.AddListener(ShuffleData);
+        btnReset.onClick.AddListener(() =>
+        {
+            RecordRunSummary("Reset");
+            ResetAll();
+        });
+
+        btnShuffle.onClick.AddListener(() =>
+        {
+            RecordRunSummary("Shuffle");
+            ShuffleData();
+        });
 
         // points & field & initial losses
         SpawnPoints();
@@ -202,6 +249,18 @@ public class OptimizersExplorer : MonoBehaviour
                 eventType: "Action",
                 key: "step_train_auto"
             );
+            EvalLogger.Instance?.ActionEvent("S2_StepAuto", new Dictionary<string, object>
+            {
+                { "step", stepCount }
+            });
+        }
+    }
+
+    void OnDestroy()
+    {
+        if (stepCount > 0)
+        {
+            RecordRunSummary("SceneExit");
         }
     }
 
@@ -211,42 +270,47 @@ public class OptimizersExplorer : MonoBehaviour
     {
         RedrawField();
 
-        if (_tracker == null) _tracker = UnityEngine.Object.FindFirstObjectByType<ObjectiveTracker>();
+        if (_tracker == null)
+            _tracker = UnityEngine.Object.FindFirstObjectByType<ObjectiveTracker>();
 
         string name = idx == 0 ? "SGD" : idx == 1 ? "Momentum" : "Adam";
-
-        // Gamification: mark inspected optimizer
         _tracker?.ReportTriedVariant(name);
 
-        // Logging
         EventLogger.Instance?.LogEvent(
             eventType: "ParamChange",
             key: "focus_optimizer",
             value: name
         );
+        EvalLogger.Instance?.ActionEvent("S2_ChangeFocus", new Dictionary<string, object>
+        {
+            { "focus", name }
+        });
     }
 
     void OnActivationChanged(int idx)
     {
-        mlpSGD.activation = (Act)idx;
-        mlpMom.activation = (Act)idx;
-        mlpAdam.activation = (Act)idx;
+        var act = (Act)idx;
+
+        mlpSGD.activation = act;
+        mlpMom.activation = act;
+        mlpAdam.activation = act;
 
         RedrawField();
         PushLossesAndReport();
 
-        string actName = ((Act)idx).ToString();
+        if (_tracker == null)
+            _tracker = UnityEngine.Object.FindFirstObjectByType<ObjectiveTracker>();
+        _tracker?.ReportTriedVariant(act.ToString());
 
-        // Gamification
-        if (_tracker == null) _tracker = UnityEngine.Object.FindFirstObjectByType<ObjectiveTracker>();
-        _tracker?.ReportTriedVariant(actName);
-
-        // Logging
         EventLogger.Instance?.LogEvent(
             eventType: "ParamChange",
             key: "activation",
-            value: actName
+            value: act.ToString()
         );
+        EvalLogger.Instance?.ActionEvent("S2_ChangeActivation", new Dictionary<string, object>
+        {
+            { "activation", act.ToString() }
+        });
     }
 
     void Step()
@@ -272,23 +336,24 @@ public class OptimizersExplorer : MonoBehaviour
         mlpMom.Forward(Xb, Yb); optMom.Apply(mlpMom.Ls, lr, bs);
         mlpAdam.Forward(Xb, Yb); optAdam.Apply(mlpAdam.Ls, lr, bs);
 
-        // UI + gamification
         RedrawField();
         PushLossesAndReport();
 
         stepCount++;
 
-        // Logging: one compact line per step
         EventLogger.Instance?.LogEvent(
             eventType: "StepTrain",
             key: "step",
             value: stepCount.ToString()
         );
+        EvalLogger.Instance?.Metric("S2_StepTrain", new Dictionary<string, object>
+        {
+            { "step", stepCount }
+        });
     }
 
     void RedrawField()
     {
-        // the DecisionField shows the focused model
         field.Redraw(FocusedProb);
     }
 
@@ -331,7 +396,8 @@ public class OptimizersExplorer : MonoBehaviour
 
     void ReportLossObjective(float lSGD, float lMom, float lAdam)
     {
-        if (_tracker == null) _tracker = UnityEngine.Object.FindFirstObjectByType<ObjectiveTracker>();
+        if (_tracker == null)
+            _tracker = UnityEngine.Object.FindFirstObjectByType<ObjectiveTracker>();
         if (_tracker == null) return;
 
         float best = Mathf.Min(lSGD, Mathf.Min(lMom, lAdam));
@@ -370,12 +436,12 @@ public class OptimizersExplorer : MonoBehaviour
     void SpawnPoints()
     {
         for (int i = pointsParent.childCount - 1; i >= 0; i--)
-            UnityEngine.Object.Destroy(pointsParent.GetChild(i).gameObject);
+            Destroy(pointsParent.GetChild(i).gameObject);
         pointGOs.Clear();
 
         for (int i = 0; i < dataset.points.Length; i++)
         {
-            var go = UnityEngine.Object.Instantiate(pointPrefab, dataset.points[i], Quaternion.identity, pointsParent);
+            var go = Instantiate(pointPrefab, dataset.points[i], Quaternion.identity, pointsParent);
             var sr = go.GetComponent<SpriteRenderer>();
             sr.color = dataset.labels[i] > 0.5f
                 ? new Color(0.94f, 0.28f, 0.28f)
@@ -389,7 +455,11 @@ public class OptimizersExplorer : MonoBehaviour
     void ResetAll()
     {
         var seed = UnityEngine.Random.Range(1, 1_000_000);
-        mlpSGD = new MLP(2, 3, 1, seed) { lossType = LossType.BCE, activation = (Act)drpActivation.value };
+        mlpSGD = new MLP(2, 3, 1, seed)
+        {
+            lossType = LossType.BCE,
+            activation = (Act)drpActivation.value
+        };
         mlpMom = CloneMLP(mlpSGD);
         mlpAdam = CloneMLP(mlpSGD);
 
@@ -408,6 +478,7 @@ public class OptimizersExplorer : MonoBehaviour
         stepCount = 0;
 
         EventLogger.Instance?.LogEvent("ResetPressed");
+        EvalLogger.Instance?.ActionEvent("S2_Reset", null);
     }
 
     void ShuffleData()
@@ -415,6 +486,7 @@ public class OptimizersExplorer : MonoBehaviour
         dataset.ReseedAndGenerateClean();
         X = dataset.XMatrix();
         Y = dataset.YMatrix();
+
         SpawnPoints();
         chart?.ClearSeries();
         RedrawField();
@@ -423,6 +495,7 @@ public class OptimizersExplorer : MonoBehaviour
         stepCount = 0;
 
         EventLogger.Instance?.LogEvent("ShuffleData");
+        EvalLogger.Instance?.ActionEvent("S2_ShuffleData", null);
     }
 
     int[] SampleBatch(int bs, int total)
@@ -486,30 +559,7 @@ public class OptimizersExplorer : MonoBehaviour
         return b;
     }
 
-    // --------- Hook for "Scene completed" (Next button) ---------
-
-    // Wire this from your Next/Continue button in S2.
-    public void OnSceneCompleted()
-    {
-        if (_tracker == null) _tracker = UnityEngine.Object.FindFirstObjectByType<ObjectiveTracker>();
-        _tracker?.ReportSceneFinish();
-
-        string sceneId = UnityEngine.SceneManagement.SceneManager.GetActiveScene().name;
-
-        EventLogger.Instance?.LogEvent(
-            eventType: "RunCompleted",
-            key: sceneId,
-            value: "success"
-        );
-
-        CrossSceneComparisonManager.Instance?.RegisterRun(
-            sceneId: sceneId,
-            fScore: null,       // if you want, we can pass bestF here later
-            success: true
-        );
-    }
-
-    // ---------- Faithfulness for Optimizers ----------
+    // ---------- Faithfulness & Cross-scene summary ----------
 
     float ComputeFaithfulness(MLP model)
     {
@@ -577,13 +627,15 @@ public class OptimizersExplorer : MonoBehaviour
     {
         double u1 = 1.0 - rnd.NextDouble();
         double u2 = 1.0 - rnd.NextDouble();
-        double randStdNormal = Math.Sqrt(-2.0 * Math.Log(u1)) * Math.Sin(2.0 * Math.PI * u2);
+        double randStdNormal =
+            Math.Sqrt(-2.0 * Math.Log(u1)) * Math.Sin(2.0 * Math.PI * u2);
         return (float)randStdNormal;
     }
 
     void ReportFaithfulnessForBestModel()
     {
-        if (_tracker == null) _tracker = UnityEngine.Object.FindFirstObjectByType<ObjectiveTracker>();
+        if (_tracker == null)
+            _tracker = UnityEngine.Object.FindFirstObjectByType<ObjectiveTracker>();
         if (_tracker == null) return;
 
         float fS = ComputeFaithfulness(mlpSGD);
@@ -595,8 +647,51 @@ public class OptimizersExplorer : MonoBehaviour
 
         EventLogger.Instance?.LogEvent(
             eventType: "FaithfulnessUpdated",
-            key: UnityEngine.SceneManagement.SceneManager.GetActiveScene().name,
+            key: SCENE_ID,
             fScore: bestF
         );
+        EvalLogger.Instance?.Metric("S2_FaithfulnessUpdated", new Dictionary<string, object>
+        {
+            { "fScore", bestF }
+        });
+    }
+
+    void RecordRunSummary(string reason)
+    {
+        if (stepCount <= 0)
+            return; // nothing meaningful yet
+
+        float fS = ComputeFaithfulness(mlpSGD);
+        float fM = ComputeFaithfulness(mlpMom);
+        float fA = ComputeFaithfulness(mlpAdam);
+        float bestF = Mathf.Max(fS, Mathf.Max(fM, fA));
+        bool success = bestF >= SUCCESS_F_THRESHOLD;
+
+        CrossSceneComparisonManager.Instance?.RegisterRun(SCENE_ID, bestF, success);
+
+        EvalLogger.Instance?.Metric("S2_RunSummary", new Dictionary<string, object>
+        {
+            { "fScore", bestF },
+            { "success", success },
+            { "reason", reason },
+            { "steps", stepCount }
+        });
+
+        EventLogger.Instance?.LogEvent(
+            eventType: "RunSummaryLocal",
+            key: reason,
+            fScore: bestF,
+            extra: $"scene={SCENE_ID};success={success};steps={stepCount}"
+        );
+    }
+
+    // Wire this from your "Next" / "Continue" button in S2.
+    public void OnSceneCompleted()
+    {
+        if (_tracker == null)
+            _tracker = UnityEngine.Object.FindFirstObjectByType<ObjectiveTracker>();
+        _tracker?.ReportSceneFinish();
+
+        RecordRunSummary("ManualComplete");
     }
 }
