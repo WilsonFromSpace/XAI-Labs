@@ -86,33 +86,6 @@ Participants described the experience as *“learning through play”* and confi
 
 ---
 
-## Repository Structure
-
-```
-XAI-Unity/
-│
-├── Assets/
-│   ├── Scenes/                # Unity scenes (S1–S6 + extras)
-│   ├── Scripts/               # Core C# logic & loggers
-│   ├── UI/                    # Shared UI & prefabs
-│   ├── Datasets/              # JSON model/data files
-│   └── Media/                 # Screenshots & demo images
-│
-├── data/
-│   ├── model_data.json
-│   ├── faithfulness_results.csv
-│   └── study_feedback.csv
-│
-├── docs/
-│   ├── README_RUNBOOK.md      # Build & reproducibility guide
-│   ├── Design_Guidelines.md   # DG-1 … DG-5 from thesis
-│   └── Thesis_Abstract.pdf
-│
-└── LICENSE
-```
-
----
-
 ## How to Run
 
 1. **Clone the repository**
