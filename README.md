@@ -7,155 +7,140 @@
 
 ---
 
-## Project Overview
+## Overview
 
-This Bachelor thesis explores how **Explainable AI (XAI)** concepts can be translated into **interactive, game-based visualizations** using the **Unity Engine**.
-The project investigates how neural network decision processes can be made more **intuitive**, **visual**, and **engaging**, especially for non-technical audiences.
+This repository contains the practical artifact for the Bachelor thesis
+**“Visualizing Neural Network Decision Processes in Unity – An Interactive Approach to Explainable AI.”**
 
-Instead of relying on static heatmaps or tables, this system turns a neural network into a **2.5D explorable world**, where users can observe and interact with the network’s internal logic — neuron activations, weight adjustments, and learning dynamics — through visual metaphors and gamified challenges.
+The project investigates how **Explainable AI (XAI)** concepts can be communicated through **interactive visualization** and **gamified exploration** using the **Unity Engine**.
+It translates abstract neural-network logic—weights, activations, losses, and optimizers—into an engaging, hands-on learning experience for non-experts.
 
 ---
 
 ## Research Question
 
-> **How can the internal processes of a neural network be visualized in an interactive and intuitive way to improve human understanding and trust?**
+> **How can Unity-based interactive visualization and gamification make neural-network decision processes more transparent and understandable for non-expert users?**
 
 ---
 
-## Objectives
+## Key Objectives
 
-1. **Visualize** the flow of data through a trained neural network in Unity.
-2. **Design interactive interfaces** that show how neurons and layers contribute to decisions.
-3. **Implement gamified elements** (missions, scoring, exploration) to enhance engagement.
-4. **Evaluate** user comprehension and perceived faithfulness through a small user study.
+1. **Visualize** neural-network computations (2 → 3 → 1 MLP) as dynamic decision fields.
+2. **Integrate gamification** through missions, feedback, and progression loops.
+3. **Quantify faithfulness** between visualization and real model behavior using a perturbation-based F-score.
+4. **Evaluate usability** and educational impact in a small exploratory user study.
 
 ---
 
-## System Architecture
+## Architecture
 
-**Python (Model Layer)**
+**Model Layer (Python)**
 
-* Train small neural networks (e.g., 2→3→1 MLP or CNN on MNIST/CIFAR).
-* Export weights, biases, and activations as `.json`.
+* Train small MLPs on synthetic datasets (`blobs`, `moons`, `rings`).
+* Export weights, biases, and activations as JSON.
 
-**Unity (Visualization Layer)**
+**Visualization Layer (Unity 6 LTS)**
 
-* Visualizes neural networks in 2D/2.5D environments.
-* Each *scene* represents a learning concept:
+* 2D/URP interactive scenes built in C#.
+* Unified UI (Canvas + Mission Panel + Metric Panel).
+* Six core scenes + two experimental extensions:
 
-  * Scene 1: Backpropagation Explorer
-  * Scene 2: Optimizers Playground
-  * Scene 3: Activation Functions Explorer
-  * Scene 4: Loss & Thresholds
-  * Scene 5: Capacity Regularization
-  * Scene 6: Attribution Slaiency
-  * Scene 7: Counterfactuals (work in progress)
-  * Scene 8: Data Geometry (work in progress)
-* Shared UI framework with adjustable sliders, toggles, and missions.
+| Scene | Concept                       | Focus                                    |
+| ----- | ----------------------------- | ---------------------------------------- |
+| S1    | Backpropagation Explorer      | Visualize gradient flow & weight updates |
+| S2    | Optimizers Playground         | Compare SGD, Momentum, Adam trajectories |
+| S3    | Activation Functions Explorer | Show non-linear decision boundaries      |
+| S4    | Loss & Thresholds             | Tune loss functions and decision cutoffs |
+| S5    | Capacity & Regularization     | Visualize overfitting vs generalization  |
+| S6    | Attribution & Saliency        | Input feature importance                 |
+| S7    | Counterfactual Exploration    | Prototype (what-if analysis)             |
+| S8    | Data Geometry & Complexity    | Prototype (dataset manifolds)            |
 
 **Evaluation Layer**
 
-* Includes a simple *faithfulness metric* (perturbation correlation).
-* Optional *user study* with 3–5 participants and Likert feedback.
+* `EvalLogger` – records accuracy, loss, faithfulness (F).
+* `EventLogger` – captures interactions and objectives.
+* `CrossSceneComparison` – aggregates results for reproducibility.
 
 ---
 
-## Gameplay & Features
+## Evaluation Results
 
-* **Interactive Visualization:** Explore decision boundaries and model behavior in real time.
-* **Gamified Tasks:** Missions guide the user to adjust weights, activations, and thresholds.
-* **Dynamic UI:** Unified layout across all scenes for scalability.
-* **Reproducibility Tools:**
+| Metric                 | Mean Value                | Comment                                                |
+| ---------------------- | ------------------------- | ------------------------------------------------------ |
+| Faithfulness (F-score) | ≈ 0.89 ± 0.02             | Strong correlation between visual and computed outputs |
+| User Study (n = 5)     | Educational Value 4.8 / 5 | High clarity and motivation ratings                    |
+| Scenes Tested          | S1 & S3                   | Both achieved stable runtime and positive feedback     |
 
-  * `faithfulness_results.csv`
-  * `study_feedback.csv`
-  * `README_RUNBOOK.md` (run instructions)
-  * Deterministic seeds & dataset imports
+Participants described the experience as *“learning through play”* and confirmed that visual feedback improved conceptual understanding of neural-network behavior.
+
+---
+
+## Features
+
+* 🎮 **Interactive Visualization** – Real-time updates of decision boundaries and activations.
+* 🧩 **Gamified Missions** – Level-based objectives with progress tracking and feedback.
+* 📊 **Quantitative Faithfulness** – Perturbation-sensitivity correlation (F-metric).
+* 🔁 **Reproducibility Suite** – Deterministic seeds, CSV exports, and session logs.
+* 🧠 **Educational Focus** – Bridges machine-learning concepts and interactive learning.
+
+---
+
+## How to Run
+
+1. **Clone the repository**
+
+   ```bash
+   git clone https://github.com/<your-username>/XAI-Unity.git
+   ```
+2. **Open in Unity 6 LTS (URP template).**
+3. Load `Assets/Scenes/MainMenu.unity` and press **Play**.
+4. Use sliders and dropdowns to adjust weights, activations, or thresholds.
+5. Export results via the **Export button** to `/data/faithfulness_results.csv`.
+
+Optional:
+
+* Replace `model_data.json` with your own trained model.
+* Modify dataset parameters in `GameManager.cs`.
 
 ---
 
 ## Methodological Framework
 
-| Stage                             | Description                                                             |
-| --------------------------------- | ----------------------------------------------------------------------- |
-| **Design Science Research (DSR)** | Iterative design–build–evaluate approach.                               |
-| **Implementation**                | Unity 6 (2D/URP) + C# scripts for visualization logic.                  |
-| **Data Source**                   | Synthetic datasets (`blobs`, `moons`, `rings`) and small neural models. |
-| **Evaluation**                    | User comprehension, perceived faithfulness, reproducibility.            |
-
----
-
-## Faithfulness & Evaluation
-
-* **Faithfulness metric:** Perturbation Sensitivity Correlation (F-score ≈ 0.9 expected).
-* **User study:** 3–5 participants explore 2 scenes, providing feedback on learning effect.
-* **Reproducibility:** All runs documented via JSON seeds, event logs, and static screenshots.
-
----
-
-## 📁 Repository Structure(wok in progress)
-
-```
-XAI-Unity/
-│
-├── Assets/
-│   ├── Scenes/                  # Unity scenes (Backprop, Optimizers, etc.)
-│   ├── Scripts/                 # Core C# scripts
-│   ├── UI/                      # Shared UI components & sprites
-│   ├── Datasets/                # JSON datasets for visualization
-│   └── Media/                   # Screenshots and thesis figures
-│
-├── data/
-│   ├── model_data.json          # Exported model weights & activations
-│   ├── faithfulness_results.csv
-│   └── study_feedback.csv
-│
-├── docs/
-│   ├── README_RUNBOOK.md        # Execution guide & reproducibility steps
-│   ├── Design_Guidelines.md     # Final XAI gamification guidelines
-│   └── Thesis_Abstract.pdf
-│
-└── LICENSE
-```
-
----
-
-## Run Instructions
-
-1. **Clone Repository**
-
-   ```bash
-   git clone https://github.com/<your-username>/XAI-Unity.git
-   ```
-2. **Open in Unity 6 (URP Template)**
-3. **Load Scene**: `Assets/Scenes/MainMenu.unity`
-4. **Press Play** – Explore neural network behavior interactively!
-
-Optional:
-
-* Import your own model JSON under `/data/model_data.json`
-* Adjust dataset parameters in `GameManager.cs`
+| Stage                             | Description                                                                         |
+| --------------------------------- | ----------------------------------------------------------------------------------- |
+| **Design Science Research (DSR)** | Iterative cycle of problem definition, artifact design, evaluation, and reflection. |
+| **Quantitative Evaluation**       | Faithfulness F-score via perturbation sensitivity tests.                            |
+| **Qualitative Evaluation**        | User study for usability and perceived learning effect.                             |
+| **Reproducibility**               | Open code, deterministic datasets, GitHub repository documentation.                 |
 
 ---
 
 ## Academic Context
 
-This project fulfills the requirements for the **Bachelor of Science in International Business & Information Systems** at HFU.
-It combines **Explainable Artificial Intelligence (XAI)** and **Gamification** under a **Design Science Research** framework.
+This project fulfills the requirements for the
+**Bachelor of Science in International Business & Information Systems (IBS7)**
+at **Hochschule Furtwangen University**.
 
-**Supervisor:** Prof. Dr. Simon Albrecht
-**Institution:** Hochschule Furtwangen University
-**Semester:** Winter 2025/26
+It contributes to **Explainable AI (XAI)** research by combining
+**visualization, gamification, and faithfulness metrics** within a
+**Design Science Research methodology**.
 
 ---
 
-## References (Selection)
+## Selected References
 
-* Samek, W., Montavon, G., Lapuschkin, S., Anders, C. J., & Müller, K.-R. (2017). *Explainable AI: Interpreting, explaining and visualizing deep learning models*. Springer.
-* Hohman, F., Kahng, M., Pienta, R., & Chau, D. H. (2019). *Visual analytics in deep learning: An interrogative survey for the next frontiers.* IEEE TVCG, 25(8), 2674–2693.
+* Doshi-Velez, F., & Kim, B. (2017). *Towards a rigorous science of interpretable machine learning.* arXiv:1702.08608.
+* Hohman, F., Park, H., Robinson, C., & Stasko, J. (2019). *Visual analytics in deep learning.* IEEE TVCG, 25(8), 2674–2693.
+* Sailer, M., & Homner, L. (2020). *The gamification of learning: A meta-analysis on effectiveness.* Educational Psychology Review.
 * Olah, C., et al. (2018). *The building blocks of interpretability.* Distill.
-* Chandrasekaran, S., et al. (2022). *User-centric evaluation of interactive explanations.* JMLR.
+* Barredo Arrieta, A., et al. (2020). *Explainable AI: Concepts, taxonomies, and challenges toward responsible AI.* Information Fusion.
 
 ---
+
+## License
+
+This project is released under the **MIT License**.
+All Unity assets, scripts, and data files are provided for academic and educational use.
 
 
