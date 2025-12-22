@@ -58,7 +58,7 @@ It translates abstract neural-network logic—weights, activations, losses, and 
 
 **Evaluation Layer**
 
-* `EvalLogger` – records accuracy, loss, faithfulness (F).
+* `EvalLogger` – records accuracy, loss, faithfulness (Fp).
 * `EventLogger` – captures interactions and objectives.
 * `CrossSceneComparison` – aggregates results for reproducibility.
 
@@ -68,7 +68,7 @@ It translates abstract neural-network logic—weights, activations, losses, and 
 
 | Metric                 | Mean Value                | Comment                                                |
 | ---------------------- | ------------------------- | ------------------------------------------------------ |
-| Faithfulness (F-score) | ≈ 0.89 ± 0.02             | Strong correlation between visual and computed outputs |
+| Faithfulness (Fp)      | ≈ 0.89 ± 0.02             | Strong correlation between visual and computed outputs |
 | User Study (n = 5)     | Educational Value 4.8 / 5 | High clarity and motivation ratings                    |
 | Scenes Tested          | S1 & S3                   | Both achieved stable runtime and positive feedback     |
 
