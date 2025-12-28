@@ -1,7 +1,9 @@
 # Visualizing Neural Network Decision Processes in Unity – An Interactive Approach to Explainable AI
 
 > Bachelor Thesis Project by **Sven Geiger**
+> 
 > Hochschule Furtwangen University – Faculty of Business Information Systems
+
 > *(Winter Semester 2025/26)*
 
 ---
