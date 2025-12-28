@@ -2,7 +2,6 @@
 
 > Bachelor Thesis Project by **Sven Geiger**
 > Hochschule Furtwangen University – Faculty of Business Information Systems
-> Supervisor: **Prof. Dr. Simon Albrecht**
 > *(Winter Semester 2025/26)*
 
 ---
